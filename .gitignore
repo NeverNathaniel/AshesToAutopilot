@@ -1,0 +1,12 @@
+# Mac
+.DS_Store
+
+# Claude
+.claude/
+CLAUDE.md
+
+# Reference material (not part of this project)
+Source Repos/
+
+# Work-in-progress tracking
+progress.md
