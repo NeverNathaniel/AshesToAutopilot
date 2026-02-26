@@ -186,17 +186,22 @@ foreach ($Profile in $Profiles) {
         }
 
         $RegFolderNames = @{
-            'Desktop'    = 'Desktop'
-            'Personal'   = 'Documents'
-            'My Pictures'= 'Pictures'
+            'Desktop'     = 'Desktop'
+            'Personal'    = 'Documents'
+            'My Pictures' = 'Pictures'
         }
 
-        if (Test-Path $UserShellFoldersKey) {
+        if (-not $ODPath) {
+            # OneDrive not configured — KFM status is N/A, not "not set up"
+            $ProfileResult.KFM_Desktop   = 'OneDriveNotConfigured'
+            $ProfileResult.KFM_Documents = 'OneDriveNotConfigured'
+            $ProfileResult.KFM_Pictures  = 'OneDriveNotConfigured'
+        } elseif (Test-Path $UserShellFoldersKey) {
             $shellProps = Get-ItemProperty $UserShellFoldersKey -ErrorAction SilentlyContinue
             foreach ($kfmProp in $CheckFolders.Keys) {
-                $regName = $CheckFolders[$kfmProp]
+                $regName   = $CheckFolders[$kfmProp]
                 $folderVal = $shellProps.$regName
-                if ($null -ne $folderVal -and $ODPath -and $folderVal -like "$ODPath*") {
+                if ($null -ne $folderVal -and $folderVal -like "$ODPath*") {
                     $ProfileResult.$kfmProp = 'Enabled'
                 } elseif ($null -ne $folderVal) {
                     $ProfileResult.$kfmProp = "NotKFM ($folderVal)"
@@ -209,25 +214,29 @@ foreach ($Profile in $Profiles) {
             $ProfileResult.Issues += 'User Shell Folders registry key not accessible'
         }
 
-        # Sync status: check OneDrive process / LastKnownState
-        # HKCU\Software\Microsoft\OneDrive\Accounts\*\LastKnownState values:
-        #   0 = Up to date, 1 = Syncing, 2 = Paused, 3 = Error
+        # Sync status: check OneDrive account sign-in and initial sync completion.
+        # OneDrive does NOT write a "LastKnownState" DWORD — use ClientFirstSyncCompleted
+        # and UserEmail presence instead, which are the actual values written to:
+        #   HKCU\Software\Microsoft\OneDrive\Accounts\{AccountName}\
         if (Test-Path $ODAccountsKey) {
-            $accounts = Get-ChildItem $ODAccountsKey -ErrorAction SilentlyContinue
+            $accounts   = Get-ChildItem $ODAccountsKey -ErrorAction SilentlyContinue
             $syncStates = @()
             foreach ($acct in $accounts) {
                 $props = Get-ItemProperty $acct.PSPath -ErrorAction SilentlyContinue
-                if ($null -ne $props.LastKnownState) {
-                    $stateMap = @{ 0 = 'UpToDate'; 1 = 'Syncing'; 2 = 'Paused'; 3 = 'Error'; 4 = 'NotSignedIn' }
-                    $stateStr = $stateMap[[int]$props.LastKnownState]
-                    if (-not $stateStr) { $stateStr = "State$($props.LastKnownState)" }
-                    $syncStates += "$($acct.PSChildName):$stateStr"
-                    if ($props.LastKnownState -gt 1) {
-                        $ProfileResult.Issues += "OneDrive sync issue on account $($acct.PSChildName): $stateStr"
-                    }
+                # Skip subkeys that aren't real accounts (no UserEmail = not a signed-in account)
+                if (-not $props.UserEmail) { continue }
+
+                if ($props.ClientFirstSyncCompleted -eq 1) {
+                    $stateStr = 'Synced'
+                } elseif ($null -ne $props.ClientFirstSyncCompleted) {
+                    $stateStr = 'SyncPending'
+                    $ProfileResult.Issues += "OneDrive initial sync not completed for account $($acct.PSChildName)"
+                } else {
+                    $stateStr = 'SyncStatusUnknown'
                 }
+                $syncStates += "$($acct.PSChildName):$stateStr"
             }
-            $ProfileResult.SyncStatus = if ($syncStates) { $syncStates -join '; ' } else { 'NoAccountFound' }
+            $ProfileResult.SyncStatus = if ($syncStates) { $syncStates -join '; ' } else { 'NoAccountSignedIn' }
         } else {
             $ProfileResult.SyncStatus = 'OneDriveNotConfigured'
             $ProfileResult.Issues    += 'OneDrive not configured for this profile'
