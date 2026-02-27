@@ -85,6 +85,25 @@ function Write-ErrorLog {
     Write-Log -Message "ERROR: $Message" -Level 'ERROR'
 }
 
+# Detect primary (most recently active) profile for verdict evaluation
+$script:PrimaryProfile = $null
+try {
+    $vpSkipSIDs   = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
+    $vpSkipNames  = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
+    $vpCutoff = (Get-Date).AddDays(-30)
+    $primaryProfileObj = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
+        Where-Object { -not $_.Special -and $vpSkipSIDs -notcontains $_.SID } |
+        Where-Object { $vpSkipNames -notcontains (Split-Path $_.LocalPath -Leaf).ToLower() } |
+        Where-Object { $_.LastUseTime -and $_.LastUseTime -ge $vpCutoff } |
+        Sort-Object LastUseTime -Descending | Select-Object -First 1
+    if ($primaryProfileObj) {
+        $script:PrimaryProfile = Split-Path $primaryProfileObj.LocalPath -Leaf
+        Write-Log "Primary profile (most recent): $($script:PrimaryProfile)"
+    }
+} catch {
+    Write-Log "Could not determine primary profile: $_" -Level 'WARN'
+}
+
 $script:CompletedCount = 0
 
 # Required for HTML encoding in the report
@@ -250,7 +269,15 @@ function Format-StepOutput {
         }
         '*Get-DownloadsSize*' {
             if ($Parsed.Results) {
-                Show-Table -Data $Parsed.Results -Properties 'Profile','SizeHuman','FileCount','FolderExists'
+                $rows = @($Parsed.Results | ForEach-Object {
+                    [PSCustomObject]@{
+                        Profile = $_.Profile
+                        Size    = $_.SizeHuman
+                        Files   = $_.FileCount
+                        Copied  = if ($_.CopySuccess -eq $true) { "Yes ($($_.CopiedFiles) new)" } elseif ($_.CopySuccess -eq $false) { 'FAILED' } else { 'N/A' }
+                    }
+                })
+                Show-Table -Data $rows -Properties 'Profile','Size','Files','Copied'
             }
         }
         '*Get-InstalledApplications*' {
@@ -345,7 +372,9 @@ function Get-StepSummary {
                 $totalBytes = ($Parsed.Results | Measure-Object -Property SizeBytes -Sum).Sum
                 $totalFiles = ($Parsed.Results | Measure-Object -Property FileCount -Sum).Sum
                 $sizeStr = if ($totalBytes -gt 1GB) { '{0:N1} GB' -f ($totalBytes / 1GB) } elseif ($totalBytes -gt 1MB) { '{0:N0} MB' -f ($totalBytes / 1MB) } else { '{0:N0} KB' -f ($totalBytes / 1KB) }
-                return "$sizeStr across $($Parsed.Results.Count) user(s), $totalFiles file(s)"
+                $copied = @($Parsed.Results | Where-Object { $_.CopySuccess -eq $true }).Count
+                $total  = $Parsed.Results.Count
+                return "$sizeStr across $total user(s) - $copied/$total copied to Documents"
             }
             '*Get-InstalledApplications*' {
                 return "$($Parsed.TotalCount) apps ($($Parsed.MachineCount) machine, $($Parsed.UserCount) user)"
@@ -401,6 +430,150 @@ function Get-StepSummary {
         return 'Parse error'
     }
 }
+
+function Get-StepVerdict {
+    param([PSCustomObject]$Parsed, [string]$ScriptFile, [string]$Status)
+
+    if ($Status -eq 'FAIL') { return @{ Verdict = 'FAIL'; Reason = 'Script execution failed' } }
+    if ($Status -eq 'SKIP') { return @{ Verdict = 'WARN'; Reason = 'Step was skipped' } }
+    if ($null -eq $Parsed)  { return @{ Verdict = 'WARN'; Reason = 'No output to evaluate' } }
+
+    try {
+        switch -Wildcard ($ScriptFile) {
+            '*Test-OneDriveKFM*' {
+                if (-not $Parsed.Results -or $Parsed.Results.Count -eq 0) {
+                    return @{ Verdict = 'WARN'; Reason = 'No profiles found to check' }
+                }
+                $allGood = $true; $primaryGood = $true
+                foreach ($r in $Parsed.Results) {
+                    $kfmOk = ($r.KFM_Desktop -eq 'Enabled' -and $r.KFM_Documents -eq 'Enabled' -and $r.KFM_Pictures -eq 'Enabled')
+                    if (-not $kfmOk) {
+                        $allGood = $false
+                        if ($r.Profile -eq $script:PrimaryProfile) { $primaryGood = $false }
+                    }
+                }
+                if ($allGood)         { return @{ Verdict = 'PASS'; Reason = 'All profiles KFM-enabled' } }
+                if (-not $primaryGood) { return @{ Verdict = 'FAIL'; Reason = "Primary profile ($($script:PrimaryProfile)) missing KFM" } }
+                return @{ Verdict = 'WARN'; Reason = 'Secondary profile(s) missing KFM' }
+            }
+            '*Test-OneDriveSyncStatus*' {
+                if (-not $Parsed.Profiles -or $Parsed.Profiles.Count -eq 0) {
+                    return @{ Verdict = 'WARN'; Reason = 'No profiles found to check' }
+                }
+                $allSafe = $true; $primarySafe = $true
+                foreach ($p in $Parsed.Profiles) {
+                    if (-not $p.SafeToWipe) {
+                        $allSafe = $false
+                        if ($p.Profile -eq $script:PrimaryProfile) { $primarySafe = $false }
+                    }
+                }
+                if ($allSafe)          { return @{ Verdict = 'PASS'; Reason = 'All profiles synced and safe' } }
+                if (-not $primarySafe) { return @{ Verdict = 'FAIL'; Reason = "Primary profile ($($script:PrimaryProfile)) not synced" } }
+                return @{ Verdict = 'WARN'; Reason = 'Secondary profile(s) not synced' }
+            }
+            '*Find-UnbackedData*' {
+                $criticalFail = @('QuickBooks', 'QuickBooks_Bkp', 'Access_DB', 'Access_DB_Accdb', 'SQLite_DB', 'Generic_DB')
+                $warnCategories = @('PST_Files', 'SSH_Keys', 'Cert_PFX', 'Cert_CER')
+                $hasFail = $false; $hasWarn = $false
+                if ($Parsed.ProfileFindings) {
+                    foreach ($pf in $Parsed.ProfileFindings) {
+                        if ($pf.Findings) {
+                            foreach ($f in $pf.Findings) {
+                                if ($criticalFail -contains $f.Category) { $hasFail = $true }
+                                if ($warnCategories -contains $f.Category) { $hasWarn = $true }
+                            }
+                        }
+                    }
+                }
+                if ($hasFail) { return @{ Verdict = 'FAIL'; Reason = 'Database or QuickBooks files found outside OneDrive' } }
+                if ($hasWarn) { return @{ Verdict = 'WARN'; Reason = 'PSTs, SSH keys, or certificates found outside OneDrive' } }
+                return @{ Verdict = 'PASS'; Reason = 'No critical unbacked data found' }
+            }
+            '*Get-DownloadsSize*' {
+                if (-not $Parsed.Results) { return @{ Verdict = 'PASS'; Reason = 'No profiles with Downloads' } }
+                $anyFail = $false
+                foreach ($r in $Parsed.Results) {
+                    if ($r.CopySuccess -eq $false) { $anyFail = $true }
+                }
+                if ($anyFail) { return @{ Verdict = 'FAIL'; Reason = 'Auto-copy failed for one or more profiles' } }
+                return @{ Verdict = 'PASS'; Reason = 'Downloads backed up to Documents' }
+            }
+            '*Get-InstalledApplications*' {
+                return @{ Verdict = 'PASS'; Reason = 'Informational' }
+            }
+            '*Get-StorageMode*' {
+                if ($Parsed.StorageMode -match 'RAID|Intel RST|IntelRST') {
+                    return @{ Verdict = 'WARN'; Reason = "Storage mode is $($Parsed.StorageMode) - may need AHCI conversion" }
+                }
+                return @{ Verdict = 'PASS'; Reason = "Storage mode: $($Parsed.StorageMode)" }
+            }
+            '*Backup-BrowserBookmarks*' {
+                if (-not $Parsed.Results -or $Parsed.Results.Count -eq 0) {
+                    return @{ Verdict = 'PASS'; Reason = 'No browser profiles found' }
+                }
+                $edgeSynced = $false; $allBackedUp = $true; $edgeBackedUp = $true
+                $anyBrowserFound = $false
+                foreach ($userResult in $Parsed.Results) {
+                    if (-not $userResult.Browsers) { continue }
+                    foreach ($b in $userResult.Browsers) {
+                        $anyBrowserFound = $true
+                        $isEdge = ($b.Browser -match 'Edge')
+                        if ($isEdge -and $b.SyncStatus -match 'Sync') { $edgeSynced = $true }
+                        if (-not $b.BackedUp) {
+                            $allBackedUp = $false
+                            if ($isEdge) { $edgeBackedUp = $false }
+                        }
+                    }
+                }
+                if (-not $anyBrowserFound) { return @{ Verdict = 'PASS'; Reason = 'No browsers detected' } }
+                $noProtection = $false
+                foreach ($userResult in $Parsed.Results) {
+                    if (-not $userResult.Browsers) { continue }
+                    $userHasBackup = $false; $userHasSync = $false
+                    foreach ($b in $userResult.Browsers) {
+                        if ($b.BackedUp) { $userHasBackup = $true }
+                        if ($b.SyncStatus -match 'Sync') { $userHasSync = $true }
+                    }
+                    if (-not $userHasBackup -and -not $userHasSync) { $noProtection = $true }
+                }
+                if ($noProtection) { return @{ Verdict = 'FAIL'; Reason = 'Profile(s) have no bookmark sync or backup' } }
+                if ($edgeSynced -and $allBackedUp) { return @{ Verdict = 'PASS'; Reason = 'Edge synced, all bookmarks backed up' } }
+                if (-not $edgeSynced -and $allBackedUp) { return @{ Verdict = 'WARN'; Reason = 'Edge not synced, but all bookmarks backed up' } }
+                if ($edgeSynced -and -not $edgeBackedUp) { return @{ Verdict = 'WARN'; Reason = 'Edge synced but backup failed; other browsers OK' } }
+                return @{ Verdict = 'WARN'; Reason = 'Partial bookmark coverage' }
+            }
+            '*Backup-DesktopBackground*' {
+                if (-not $Parsed.Results) { return @{ Verdict = 'PASS'; Reason = 'No profiles checked' } }
+                $anyCustomFailed = $false
+                foreach ($r in $Parsed.Results) {
+                    if ($r.IsCustom -eq $true -and $r.Success -ne $true) { $anyCustomFailed = $true }
+                }
+                if ($anyCustomFailed) { return @{ Verdict = 'FAIL'; Reason = 'Custom wallpaper backup failed' } }
+                return @{ Verdict = 'PASS'; Reason = 'Wallpapers backed up (or default)' }
+            }
+            '*Backup-OutlookSignatures*' {
+                if (-not $Parsed.Results) { return @{ Verdict = 'PASS'; Reason = 'No profiles checked' } }
+                $anyFoundNotBacked = $false
+                foreach ($r in $Parsed.Results) {
+                    if ($r.Found -eq $true -and $r.Success -ne $true) { $anyFoundNotBacked = $true }
+                }
+                if ($anyFoundNotBacked) { return @{ Verdict = 'FAIL'; Reason = 'Signature backup failed' } }
+                return @{ Verdict = 'PASS'; Reason = 'Signatures backed up (or none found)' }
+            }
+            '*Get-Printers*' {
+                return @{ Verdict = 'PASS'; Reason = 'Informational' }
+            }
+            '*Get-AutopilotAssignment*' {
+                if ($Parsed.ProfileDownloaded) {
+                    return @{ Verdict = 'PASS'; Reason = 'Autopilot profile downloaded locally' }
+                }
+                return @{ Verdict = 'FAIL'; Reason = 'No Autopilot profile found on device' }
+            }
+            default { return @{ Verdict = 'PASS'; Reason = 'Completed' } }
+        }
+    }
+    catch { return @{ Verdict = 'WARN'; Reason = "Evaluation error: $_" } }
+}
 #endregion
 
 #region --- Step Execution (JSON Capture) ---
@@ -443,7 +616,16 @@ function Invoke-LiteStep {
 
     Write-Log "Step $($Step.Index) ($($Step.DisplayName)): $status - $summary"
 
-    return @{ Status = $status; Parsed = $parsed; Summary = $summary; RawJson = $jsonRaw }
+    $verdict = Get-StepVerdict -Parsed $parsed -ScriptFile $Step.ScriptPath -Status $status
+
+    return @{
+        Status        = $status
+        Parsed        = $parsed
+        Summary       = $summary
+        RawJson       = $jsonRaw
+        Verdict       = $verdict.Verdict
+        VerdictReason = $verdict.Reason
+    }
 }
 #endregion
 
@@ -472,8 +654,22 @@ function Show-Summary {
             default { 'Gray' }
         }
 
+        $verdictIcon = switch ($r.Verdict) {
+            'PASS' { '[OK]' }
+            'WARN' { '[!!]' }
+            'FAIL' { '[XX]' }
+            default { '[--]' }
+        }
+        $verdictColor = switch ($r.Verdict) {
+            'PASS' { 'Green' }
+            'WARN' { 'Yellow' }
+            'FAIL' { 'Red' }
+            default { 'Gray' }
+        }
+
         Write-Host "   $num. $name " -NoNewline -ForegroundColor Gray
         Write-Host $badge.PadRight(7) -NoNewline -ForegroundColor $badgeColor
+        Write-Host " $verdictIcon" -NoNewline -ForegroundColor $verdictColor
         Write-Host " $summ" -ForegroundColor DarkGray
     }
 
@@ -492,6 +688,21 @@ function Show-Summary {
     Write-Host -NoNewline "$skip" -ForegroundColor Yellow
     Write-Host "  |  Total: $total" -ForegroundColor Gray
     Write-Host "  $bar" -ForegroundColor Cyan
+
+    # Overall verdict
+    $failCount = @($ResultSet | Where-Object { $_.Verdict -eq 'FAIL' }).Count
+    $warnCount = @($ResultSet | Where-Object { $_.Verdict -eq 'WARN' }).Count
+    Write-Host ''
+    if ($failCount -eq 0 -and $warnCount -eq 0) {
+        Write-Host '  READY TO WIPE' -ForegroundColor Green
+    } elseif ($failCount -eq 0) {
+        Write-Host "  READY TO WIPE ($warnCount warning(s))" -ForegroundColor Yellow
+    } else {
+        Write-Host "  NOT READY - $failCount issue(s) to resolve" -ForegroundColor Red
+        foreach ($r in ($ResultSet | Where-Object { $_.Verdict -eq 'FAIL' })) {
+            Write-Host "    - $($r.DisplayName): $($r.VerdictReason)" -ForegroundColor Red
+        }
+    }
     Write-Host ''
 }
 #endregion
@@ -548,6 +759,15 @@ function Export-HtmlReport {
   .card-body th { text-align: left; padding: 4px 8px; border-bottom: 2px solid var(--border); color: var(--muted); font-weight: 600; }
   .card-body td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
   .footer { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 16px; margin-top: 24px; }
+  .verdict { padding: 2px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; color: #fff; text-transform: uppercase; margin-left: 6px; }
+  .verdict.pass { background: var(--pass); }
+  .verdict.warn { background: var(--skip); color: #422006; }
+  .verdict.fail { background: var(--fail); }
+  .readiness { padding: 12px 20px; border-radius: 8px; font-weight: 600; font-size: 0.9375rem; margin-bottom: 24px; text-align: center; }
+  .readiness.ready { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .readiness.warnings { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+  .readiness.not-ready { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  .fail-list { margin-top: 6px; font-size: 0.8125rem; font-weight: 400; }
   @media print { .header { background: #0f172a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .badge, .status { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head>
@@ -575,6 +795,22 @@ function Export-HtmlReport {
     $null = $sb.AppendLine("  <div class='badge total'>Total: $total</div>")
     $null = $sb.AppendLine("</div>")
 
+    # ── Readiness verdict ─────────────────────────────────────────────────
+    $failVerdicts = @($ResultSet | Where-Object { $_.Verdict -eq 'FAIL' })
+    $warnVerdicts = @($ResultSet | Where-Object { $_.Verdict -eq 'WARN' })
+    if ($failVerdicts.Count -eq 0 -and $warnVerdicts.Count -eq 0) {
+        $null = $sb.AppendLine("<div class='readiness ready'>&#10003; Ready to Wipe</div>")
+    } elseif ($failVerdicts.Count -eq 0) {
+        $null = $sb.AppendLine("<div class='readiness warnings'>&#9888; Ready to Wipe &mdash; $($warnVerdicts.Count) warning(s)</div>")
+    } else {
+        $null = $sb.AppendLine("<div class='readiness not-ready'>&#10007; Not Ready &mdash; $($failVerdicts.Count) issue(s) to resolve")
+        $null = $sb.AppendLine("<div class='fail-list'>")
+        foreach ($fv in $failVerdicts) {
+            $null = $sb.AppendLine("$([System.Web.HttpUtility]::HtmlEncode($fv.DisplayName)): $([System.Web.HttpUtility]::HtmlEncode($fv.VerdictReason))<br/>")
+        }
+        $null = $sb.AppendLine("</div></div>")
+    }
+
     # ── Step cards ───────────────────────────────────────────────────────
     foreach ($r in $ResultSet) {
         $statusClass = switch ($r.Status) { 'DONE' { 'done' } 'FAIL' { 'fail' } 'SKIP' { 'skip' } default { 'skip' } }
@@ -584,10 +820,19 @@ function Export-HtmlReport {
         $null = $sb.AppendLine("<div class='card'>")
         $null = $sb.AppendLine("  <div class='card-head'>")
         $null = $sb.AppendLine("    <span class='step-name'>$($r.Index). $nameEnc</span>")
+        $verdictClass = switch ($r.Verdict) { 'PASS' { 'pass' } 'WARN' { 'warn' } 'FAIL' { 'fail' } default { 'pass' } }
+        $verdictLabel = switch ($r.Verdict) { 'PASS' { '&#10003; Pass' } 'WARN' { '&#9888; Warn' } 'FAIL' { '&#10007; Fail' } default { '' } }
+        $reasonEnc = [System.Web.HttpUtility]::HtmlEncode($r.VerdictReason)
         $null = $sb.AppendLine("    <span class='status $statusClass'>$($r.Status)</span>")
+        $null = $sb.AppendLine("    <span class='verdict $verdictClass' title='$reasonEnc'>$verdictLabel</span>")
         $null = $sb.AppendLine("  </div>")
         $null = $sb.AppendLine("  <div class='card-body'>")
         $null = $sb.AppendLine("    <div class='summary'>$summEnc</div>")
+        if ($r.VerdictReason) {
+            $vrEnc = [System.Web.HttpUtility]::HtmlEncode($r.VerdictReason)
+            $vrColor = switch ($r.Verdict) { 'PASS' { 'var(--pass)' } 'WARN' { '#b45309' } 'FAIL' { 'var(--fail)' } default { 'var(--text)' } }
+            $null = $sb.AppendLine("    <div class='summary' style='margin-top:4px;font-weight:600;color:$vrColor'>$vrEnc</div>")
+        }
 
         # Build a mini HTML table from parsed data
         $tableHtml = Get-HtmlTable -Parsed $r.ParsedData -ScriptFile $r.ScriptPath
@@ -648,7 +893,17 @@ function Get-HtmlTable {
                 }
             }
             '*Get-DownloadsSize*' {
-                if ($Parsed.Results) { $cols = @('Profile','SizeHuman','FileCount'); $rows = @($Parsed.Results) }
+                if ($Parsed.Results) {
+                    $cols = @('Profile','SizeHuman','FileCount','CopyStatus')
+                    $rows = @($Parsed.Results | ForEach-Object {
+                        [PSCustomObject]@{
+                            Profile    = $_.Profile
+                            SizeHuman  = $_.SizeHuman
+                            FileCount  = $_.FileCount
+                            CopyStatus = if ($_.CopySuccess -eq $true) { "Copied ($($_.CopiedFiles) new)" } elseif ($_.CopySuccess -eq $false) { 'FAILED' } else { 'N/A' }
+                        }
+                    })
+                }
             }
             '*Get-InstalledApplications*' {
                 if ($Parsed.Applications) {
@@ -733,12 +988,14 @@ if ($NonInteractive) {
         foreach ($step in $Steps) {
             $result = Invoke-LiteStep -Step $step
             $Results += [PSCustomObject]@{
-                Index       = $step.Index
-                DisplayName = $step.DisplayName
-                ScriptPath  = $step.ScriptPath
-                Status      = $result.Status
-                Summary     = $result.Summary
-                ParsedData  = $result.Parsed
+                Index         = $step.Index
+                DisplayName   = $step.DisplayName
+                ScriptPath    = $step.ScriptPath
+                Status        = $result.Status
+                Summary       = $result.Summary
+                ParsedData    = $result.Parsed
+                Verdict       = $result.Verdict
+                VerdictReason = $result.VerdictReason
             }
         }
 
@@ -822,12 +1079,14 @@ try {
         Write-Host " - $($result.Summary)" -ForegroundColor DarkGray
 
         $Results += [PSCustomObject]@{
-            Index       = $step.Index
-            DisplayName = $step.DisplayName
-            ScriptPath  = $step.ScriptPath
-            Status      = $result.Status
-            Summary     = $result.Summary
-            ParsedData  = $result.Parsed
+            Index         = $step.Index
+            DisplayName   = $step.DisplayName
+            ScriptPath    = $step.ScriptPath
+            Status        = $result.Status
+            Summary       = $result.Summary
+            ParsedData    = $result.Parsed
+            Verdict       = $result.Verdict
+            VerdictReason = $result.VerdictReason
         }
 
         $script:CompletedCount++
