@@ -6,7 +6,8 @@
     For each active user profile (skipping system, inactive 30+ days, ithlocal/itklocal):
     - Calculates the size of the Downloads folder.
     - Interactive mode: reports size and prompts once whether to copy to Documents\Downloads_Backup.
-    - NonInteractive mode: reports size only as JSON.
+    - NonInteractive mode: reports size, auto-copies Downloads to Documents\Downloads_Backup
+      (incremental — skips files already present with same size), and emits JSON.
 
 .PARAMETER NonInteractive
     Suppress all prompts. Output structured JSON to stdout. Exit cleanly.
@@ -119,6 +120,8 @@ foreach ($Profile in $Profiles) {
         CopyRequested = $false
         CopyDest      = $null
         CopySuccess   = $null
+        CopiedFiles   = 0
+        SkippedFiles  = 0
         Error         = $null
     }
 
@@ -141,6 +144,73 @@ foreach ($Profile in $Profiles) {
     }
 
     $Results += $ProfileResult
+}
+#endregion
+
+#region --- NonInteractive Auto-Copy ---
+if ($NonInteractive) {
+    foreach ($r in ($Results | Where-Object { $_.FolderExists -and $_.FileCount -gt 0 })) {
+        $destPath = Join-Path $r.ProfilePath 'Documents\Downloads_Backup'
+        $r.CopyRequested = $true
+        $r.CopyDest      = $destPath
+
+        try {
+            $srcFiles = Get-ChildItem -Path $r.DownloadsPath -Recurse -Force -ErrorAction SilentlyContinue |
+                Where-Object { -not $_.PSIsContainer }
+
+            if ($srcFiles.Count -eq 0) {
+                $r.CopySuccess = $true
+                $r.CopiedFiles = 0
+                Write-Log "No files to copy for $($r.Profile)"
+                continue
+            }
+
+            if (-not (Test-Path $destPath)) {
+                New-Item -Path $destPath -ItemType Directory -Force | Out-Null
+            }
+
+            $copiedCount = 0
+            $skippedCount = 0
+            foreach ($srcFile in $srcFiles) {
+                $relativePath = $srcFile.FullName.Substring($r.DownloadsPath.Length)
+                $destFile     = Join-Path $destPath $relativePath
+                $destDir      = Split-Path $destFile -Parent
+
+                if (-not (Test-Path $destDir)) {
+                    New-Item -Path $destDir -ItemType Directory -Force | Out-Null
+                }
+
+                # Incremental: skip if dest file exists with same size
+                if (Test-Path $destFile) {
+                    $existingSize = (Get-Item $destFile -Force).Length
+                    if ($existingSize -eq $srcFile.Length) {
+                        $skippedCount++
+                        continue
+                    }
+                }
+
+                Copy-Item -Path $srcFile.FullName -Destination $destFile -Force -ErrorAction Stop
+                $copiedCount++
+            }
+
+            $r.CopySuccess  = $true
+            $r.CopiedFiles  = $copiedCount
+            $r.SkippedFiles = $skippedCount
+            Write-Log "Auto-copy for $($r.Profile): $copiedCount copied, $skippedCount unchanged"
+        } catch {
+            Write-ErrorLog "Auto-copy failed for $($r.Profile): $_"
+            $r.CopySuccess = $false
+            $r.CopiedFiles = 0
+        }
+    }
+
+    # Mark profiles with empty/missing Downloads as success (nothing to copy)
+    foreach ($r in ($Results | Where-Object { -not $_.FolderExists -or $_.FileCount -eq 0 })) {
+        if ($null -eq $r.CopySuccess) {
+            $r.CopySuccess = $true
+            $r.CopiedFiles = 0
+        }
+    }
 }
 #endregion
 
