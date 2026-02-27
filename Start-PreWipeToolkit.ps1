@@ -4,8 +4,8 @@
 
 .DESCRIPTION
     Menu-driven workflow that guides a tech through all 29 pre-wipe preparation
-    steps across four categories: Data Collection, Configuration Checks,
-    Configuration Changes, and Autopilot Readiness.
+    steps across four categories: Scan/Check/Backup, Configure,
+    Install & Update, and Autopilot.
 
     Features:
     - Arrow-key menu navigation via PSMenu module
@@ -144,14 +144,29 @@ catch {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP DEFINITIONS  (29 steps — ordered by category)
+# PHASE LABELS (friendly display names for menu categories)
+# ─────────────────────────────────────────────────────────────────────────────
+$script:PhaseLabels = [ordered]@{
+    'ScanCheckBackup' = 'Scan, Check & Backup'
+    'Configure'       = 'Configure'
+    'InstallUpdate'   = 'Install & Update'
+    'Autopilot'       = 'Autopilot'
+}
+
+function Get-PhaseLabel([string]$Phase) {
+    if ($script:PhaseLabels.Contains($Phase)) { return $script:PhaseLabels[$Phase] }
+    return $Phase
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP DEFINITIONS  (29 steps — ordered by impact level)
 # ScriptPath is relative to $PSScriptRoot
 # ─────────────────────────────────────────────────────────────────────────────
 $script:Steps = @(
-    # ── Data Collection ───────────────────────────────────────────────────────
+    # ── Scan, Check & Backup (low impact — read-only or backup only) ───────
     [PSCustomObject]@{
         Index       = 1
-        Phase       = 'DataCollection'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Scan for Unbacked Data & Non-Std Apps'
         ScriptPath  = 'Scripts\DataCollection\Find-UnbackedData.ps1'
         Status      = 'not-run'
@@ -159,7 +174,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 2
-        Phase       = 'DataCollection'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Check Downloads Folder Sizes'
         ScriptPath  = 'Scripts\DataCollection\Get-DownloadsSize.ps1'
         Status      = 'not-run'
@@ -167,7 +182,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 3
-        Phase       = 'DataCollection'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Get Drive Mappings'
         ScriptPath  = 'Scripts\DataCollection\Get-DriveMappings.ps1'
         Status      = 'not-run'
@@ -175,7 +190,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 4
-        Phase       = 'DataCollection'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'List Physical Printers'
         ScriptPath  = 'Scripts\DataCollection\Get-Printers.ps1'
         Status      = 'not-run'
@@ -183,7 +198,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 5
-        Phase       = 'DataCollection'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Get Windows Product Key'
         ScriptPath  = 'Scripts\DataCollection\Get-WindowsProductKey.ps1'
         Status      = 'not-run'
@@ -191,7 +206,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 6
-        Phase       = 'DataCollection'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Get Installed Applications'
         ScriptPath  = 'Scripts\DataCollection\Get-InstalledApplications.ps1'
         Status      = 'not-run'
@@ -199,17 +214,15 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 7
-        Phase       = 'DataCollection'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Get Device Health Report'
         ScriptPath  = 'Scripts\DataCollection\Get-DeviceHealth.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
-
-    # ── Configuration Checks ──────────────────────────────────────────────────
     [PSCustomObject]@{
         Index       = 8
-        Phase       = 'ConfigurationChecks'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Test OneDrive KFM Status'
         ScriptPath  = 'Scripts\ConfigurationChecks\Test-OneDriveKFM.ps1'
         Status      = 'not-run'
@@ -217,7 +230,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 9
-        Phase       = 'ConfigurationChecks'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Test OneDrive Sync Status'
         ScriptPath  = 'Scripts\ConfigurationChecks\Test-OneDriveSyncStatus.ps1'
         Status      = 'not-run'
@@ -225,7 +238,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 10
-        Phase       = 'ConfigurationChecks'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Get Storage Controller Mode'
         ScriptPath  = 'Scripts\ConfigurationChecks\Get-StorageMode.ps1'
         Status      = 'not-run'
@@ -233,7 +246,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 11
-        Phase       = 'ConfigurationChecks'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Test BIOS Version (Dell)'
         ScriptPath  = 'Scripts\ConfigurationChecks\Test-BiosVersion.ps1'
         Status      = 'not-run'
@@ -241,15 +254,15 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 12
-        Phase       = 'ConfigurationChecks'
-        DisplayName = 'Test Driver Status (Dell DCU scan)'
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Test Driver Status (Dell DCU)'
         ScriptPath  = 'Scripts\ConfigurationChecks\Test-DriverStatus.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 13
-        Phase       = 'ConfigurationChecks'
+        Phase       = 'ScanCheckBackup'
         DisplayName = 'Test Wake-on-LAN Settings'
         ScriptPath  = 'Scripts\ConfigurationChecks\Test-WakeOnLan.ps1'
         Status      = 'not-run'
@@ -257,107 +270,109 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 14
-        Phase       = 'ConfigurationChecks'
-        DisplayName = 'Test Windows Recovery Environment (WinRE)'
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Test Windows Recovery (WinRE)'
         ScriptPath  = 'Scripts\ConfigurationChecks\Test-WinRE.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
-
-    # ── Configuration Changes ─────────────────────────────────────────────────
     [PSCustomObject]@{
         Index       = 15
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Backup Browser Bookmarks'
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Browser Bookmarks'
         ScriptPath  = 'Scripts\ConfigurationChanges\Backup-BrowserBookmarks.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 16
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Backup Desktop Background'
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Desktop Background'
         ScriptPath  = 'Scripts\ConfigurationChanges\Backup-DesktopBackground.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 17
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Backup Outlook Signatures'
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Outlook Signatures'
         ScriptPath  = 'Scripts\ConfigurationChanges\Backup-OutlookSignatures.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 18
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Backup Taskbar Layout'
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Taskbar Layout'
         ScriptPath  = 'Scripts\ConfigurationChanges\Backup-TaskbarLayout.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 19
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Backup Wi-Fi Profiles'
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Wi-Fi Profiles'
         ScriptPath  = 'Scripts\ConfigurationChanges\Backup-WiFiProfiles.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
+
+    # ── Configure (changes settings) ──────────────────────────────────────
     [PSCustomObject]@{
         Index       = 20
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Escrow BitLocker Key to Entra ID'
+        Phase       = 'Configure'
+        DisplayName = 'Escrow BitLocker Key to Entra ID'
         ScriptPath  = 'Scripts\ConfigurationChanges\Test-BitLockerEscrow.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 21
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Install Dell Command Tools (DCU + DCC)'
+        Phase       = 'Configure'
+        DisplayName = 'Set Wake-on-LAN (BIOS + NIC + Windows)'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Set-WakeOnLan.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+
+    # ── Install & Update ──────────────────────────────────────────────────
+    [PSCustomObject]@{
+        Index       = 22
+        Phase       = 'InstallUpdate'
+        DisplayName = 'Install Dell Command Tools (DCU + DCC)'
         ScriptPath  = 'Scripts\ConfigurationChanges\Install-DellCommandTools.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
-        Index       = 22
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Set Wake-on-LAN (BIOS + NIC + Windows)'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Set-WakeOnLan.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
         Index       = 23
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[CHANGE] Update Drivers (Dell DCU)'
+        Phase       = 'InstallUpdate'
+        DisplayName = 'Update Drivers (Dell DCU)'
         ScriptPath  = 'Scripts\ConfigurationChanges\Update-Drivers.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 24
-        Phase       = 'ConfigurationChanges'
-        DisplayName = '[BIOS] Update BIOS (Dell DCU — may reboot)'
+        Phase       = 'InstallUpdate'
+        DisplayName = 'Update BIOS (Dell DCU — may reboot)'
         ScriptPath  = 'Scripts\ConfigurationChanges\Update-Bios.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
 
-    # ── Autopilot Readiness ───────────────────────────────────────────────────
+    # ── Autopilot ─────────────────────────────────────────────────────────
     [PSCustomObject]@{
         Index       = 25
-        Phase       = 'AutopilotReadiness'
-        DisplayName = 'Test Autopilot Profile (local registry/file check)'
+        Phase       = 'Autopilot'
+        DisplayName = 'Test Autopilot Profile'
         ScriptPath  = 'Scripts\AutopilotReadiness\Test-AutopilotProfile.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 26
-        Phase       = 'AutopilotReadiness'
+        Phase       = 'Autopilot'
         DisplayName = 'Test Autopilot Readiness'
         ScriptPath  = 'Scripts\AutopilotReadiness\Test-AutopilotReadiness.ps1'
         Status      = 'not-run'
@@ -365,7 +380,7 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 27
-        Phase       = 'AutopilotReadiness'
+        Phase       = 'Autopilot'
         DisplayName = 'Get Autopilot Assignment (Graph API)'
         ScriptPath  = 'Scripts\AutopilotReadiness\Get-AutopilotAssignment.ps1'
         Status      = 'not-run'
@@ -373,16 +388,16 @@ $script:Steps = @(
     }
     [PSCustomObject]@{
         Index       = 28
-        Phase       = 'AutopilotReadiness'
-        DisplayName = '[CHANGE] Register Device with Autopilot'
+        Phase       = 'Autopilot'
+        DisplayName = 'Register Device with Autopilot'
         ScriptPath  = 'Scripts\AutopilotReadiness\Register-AutopilotDevice.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
     }
     [PSCustomObject]@{
         Index       = 29
-        Phase       = 'AutopilotReadiness'
-        DisplayName = 'Get Pre-Wipe Summary'
+        Phase       = 'Autopilot'
+        DisplayName = 'Pre-Wipe Summary'
         ScriptPath  = 'Scripts\AutopilotReadiness\Get-PreWipeSummary.ps1'
         Status      = 'not-run'
         IsWorkflow  = $false
@@ -472,6 +487,7 @@ function Update-SessionStep {
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DISPLAY HELPERS
+# Uses PSMenu's native Show-Menu — no custom menu renderer.
 # ─────────────────────────────────────────────────────────────────────────────
 
 function Write-CyanBox {
@@ -503,201 +519,36 @@ function Write-CyanBox {
     Write-Host ''
 }
 
-function Show-Menu {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory, Position = 0)][array]$MenuItems,
-        [switch]$ReturnIndex,
-        [switch]$MultiSelect,
-        [ConsoleColor]$ItemFocusColor = [ConsoleColor]::Cyan,
-        [ScriptBlock]$MenuItemFormatter = {
-            param($M)
-            if ($null -eq $M) { '' } else { $M.ToString() }
-        },
-        [array]$InitialSelection = @(),
-        [ScriptBlock]$Callback = $null
-    )
-
-    if ($MultiSelect) {
-        throw 'MultiSelect is not supported by this menu renderer.'
-    }
-
-    if (-not $MenuItems -or $MenuItems.Count -eq 0) {
-        return $null
-    }
-
-    $separatorToken = Get-MenuSeparator
-    $entries = @()
-
-    for ($i = 0; $i -lt $MenuItems.Count; $i++) {
-        $item = $MenuItems[$i]
-        if ($null -eq $item) { continue }
-
-        $isSeparator = [object]::ReferenceEquals($item, $separatorToken)
-        $text = ''
-
-        if (-not $isSeparator) {
-            $text = & $MenuItemFormatter $item
-            if ([string]::IsNullOrWhiteSpace([string]$text)) {
-                $text = $item.ToString()
-            }
-        }
-
-        $entries += [PSCustomObject]@{
-            ArrayIndex  = $i
-            Item        = $item
-            IsSeparator = $isSeparator
-            IsSelectable = (-not $isSeparator)
-            Text        = ([string]$text).TrimEnd()
-        }
-    }
-
-    $selectable = @($entries | Where-Object { $_.IsSelectable })
-    if ($selectable.Count -eq 0) {
-        return $null
-    }
-
-    $currentArrayIndex = if ($InitialSelection -and $InitialSelection.Count -gt 0) {
-        [int]$InitialSelection[0]
-    }
-    else {
-        [int]$selectable[0].ArrayIndex
-    }
-    if (-not ($entries | Where-Object { $_.ArrayIndex -eq $currentArrayIndex -and $_.IsSelectable })) {
-        $currentArrayIndex = [int]$selectable[0].ArrayIndex
-    }
-
-    $windowWidth = [Math]::Max(40, (Get-Host).UI.RawUI.WindowSize.Width)
-    $windowHeight = [Math]::Max(18, (Get-Host).UI.RawUI.WindowSize.Height)
-    $maxVisibleItems = [Math]::Max(6, [Math]::Min($entries.Count, $windowHeight - 12))
-
-    $maxTextLength = ($entries | Where-Object { -not $_.IsSeparator } | Measure-Object -Property Text.Length -Maximum).Maximum
-    if ($null -eq $maxTextLength) { $maxTextLength = 0 }
-
-    $title = 'Menu'
-    $hint = 'Use Up/Down arrows to move, Enter to select, Esc to cancel'
-    $targetWidth = [Math]::Max(($maxTextLength + 4), [Math]::Max($title.Length, $hint.Length))
-    $innerWidth = [Math]::Max(58, [Math]::Min($targetWidth, $windowWidth - 6))
-    $topIndex = 0
-    $startTop = [Console]::CursorTop
-
-    $render = {
-        if ([Console]::CursorTop -ne $startTop) {
-            [Console]::SetCursorPosition(0, $startTop)
-        }
-
-        $currentVisiblePos = 0
-        for ($j = 0; $j -lt $entries.Count; $j++) {
-            if ($entries[$j].ArrayIndex -eq $currentArrayIndex) {
-                $currentVisiblePos = $j
-                break
-            }
-        }
-
-        if ($currentVisiblePos -lt $topIndex) {
-            $topIndex = $currentVisiblePos
-        }
-        if ($currentVisiblePos -ge ($topIndex + $maxVisibleItems)) {
-            $topIndex = $currentVisiblePos - $maxVisibleItems + 1
-        }
-
-        $bottomIndex = [Math]::Min($entries.Count - 1, $topIndex + $maxVisibleItems - 1)
-        $visibleEntries = @()
-        for ($j = $topIndex; $j -le $bottomIndex; $j++) {
-            $visibleEntries += $entries[$j]
-        }
-
-        $bar = '═' * ($innerWidth + 2)
-        Write-Host "╔$bar╗" -ForegroundColor Cyan
-        Write-Host ("║ {0} ║" -f $title.PadRight($innerWidth)) -ForegroundColor Cyan
-        Write-Host ("║ {0} ║" -f ('─' * $innerWidth)) -ForegroundColor Cyan
-
-        foreach ($entry in $visibleEntries) {
-            if ($entry.IsSeparator) {
-                $content = ('─' * $innerWidth)
-            }
-            else {
-                $prefix = if ($entry.ArrayIndex -eq $currentArrayIndex) { '> ' } else { '  ' }
-                $content = $prefix + $entry.Text
-                if ($content.Length -gt $innerWidth) {
-                    $content = $content.Substring(0, $innerWidth)
-                }
-                $content = $content.PadRight($innerWidth)
-            }
-            Write-Host ("║ {0} ║" -f $content) -ForegroundColor Cyan
-        }
-
-        for ($j = $visibleEntries.Count; $j -lt $maxVisibleItems; $j++) {
-            Write-Host ("║ {0} ║" -f ''.PadRight($innerWidth)) -ForegroundColor Cyan
-        }
-
-        Write-Host ("║ {0} ║" -f ('─' * $innerWidth)) -ForegroundColor Cyan
-        $pageInfo = if ($entries.Count -gt $maxVisibleItems) {
-            "Showing {0}-{1} of {2}" -f ($topIndex + 1), ($bottomIndex + 1), $entries.Count
-        }
-        else {
-            $hint
-        }
-        if ($pageInfo.Length -gt $innerWidth) {
-            $pageInfo = $pageInfo.Substring(0, $innerWidth)
-        }
-        Write-Host ("║ {0} ║" -f $pageInfo.PadRight($innerWidth)) -ForegroundColor Cyan
-        Write-Host "╚$bar╝" -ForegroundColor Cyan
-    }
-
-    & $render
-    while ($true) {
-        if ($Callback) { & $Callback }
-        $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-        switch ($key.VirtualKeyCode) {
-            27 { return $null } # Esc
-            13 { # Enter
-                if ($ReturnIndex) {
-                    return $currentArrayIndex
-                }
-                $selectedEntry = $entries | Where-Object { $_.ArrayIndex -eq $currentArrayIndex } | Select-Object -First 1
-                return $selectedEntry.Item
-            }
-            38 { # Up
-                $pos = ($entries | ForEach-Object { $_.ArrayIndex }).IndexOf($currentArrayIndex)
-                do {
-                    $pos--
-                    if ($pos -lt 0) { $pos = $entries.Count - 1 }
-                } until ($entries[$pos].IsSelectable)
-                $currentArrayIndex = $entries[$pos].ArrayIndex
-                & $render
-            }
-            40 { # Down
-                $pos = ($entries | ForEach-Object { $_.ArrayIndex }).IndexOf($currentArrayIndex)
-                do {
-                    $pos++
-                    if ($pos -ge $entries.Count) { $pos = 0 }
-                } until ($entries[$pos].IsSelectable)
-                $currentArrayIndex = $entries[$pos].ArrayIndex
-                & $render
-            }
-        }
-    }
-}
-
 function Show-Header {
-    $done  = ($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
+    $done  = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
+    $fail  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count
     $total = $script:Steps.Count
-    $start = try { ([datetime]$script:Session.StartTime).ToString('yyyy-MM-dd HH:mm') } catch { 'New session' }
 
-    Write-CyanBox -Lines @(
-        'Pre-Wipe Toolkit  ·  AshesToAutopilot'
-        ("Computer  : {0}   Serial: {1}" -f $script:ComputerName, $script:SerialNumber)
-        ("User      : {0}   Session: {1}" -f $script:CurrentUser, $start)
-        ("Progress  : {0} of {1} steps complete" -f $done, $total)
-    )
+    Write-Host ''
+    Write-Host '  Pre-Wipe Toolkit · AshesToAutopilot' -ForegroundColor White
+    Write-Host "  $($script:ComputerName) · SN: $($script:SerialNumber) · $($script:CurrentUser)" -ForegroundColor DarkGray
+
+    # Progress bar
+    $barLen  = 24
+    $filled  = if ($total -gt 0) { [Math]::Floor(($done / $total) * $barLen) } else { 0 }
+    $empty   = $barLen - $filled
+    Write-Host -NoNewline '  '
+    if ($filled -gt 0) { Write-Host -NoNewline ([string]::new([char]0x2588, $filled)) -ForegroundColor Green }
+    if ($empty  -gt 0) { Write-Host -NoNewline ([string]::new([char]0x2591, $empty))  -ForegroundColor DarkGray }
+    $progText = "  $done/$total complete"
+    if ($fail -gt 0) { $progText += " · $fail failed" }
+    Write-Host $progText -ForegroundColor Gray
+
+    Write-Host "  $('─' * 56)" -ForegroundColor DarkGray
+    Write-Host ''
 }
 
 function Show-StepBanner {
     param([PSCustomObject]$Step)
+    $phaseLabel = Get-PhaseLabel $Step.Phase
     Write-CyanBox -Lines @(
-        ("Step     : {0} - {1}" -f $Step.Index, $Step.DisplayName)
-        ("Phase    : {0}" -f $Step.Phase)
+        $Step.DisplayName
+        ("Category : {0}" -f $phaseLabel)
         ("Script   : {0}" -f $Step.ScriptPath)
     )
 }
@@ -820,7 +671,7 @@ function Show-SessionSummary {
 
     foreach ($group in ($script:Steps | Group-Object Phase)) {
         $lines += ''
-        $lines += ("-- {0}" -f $group.Name)
+        $lines += ("-- {0}" -f (Get-PhaseLabel $group.Name))
         foreach ($step in $group.Group) {
             $badge = switch ($step.Status) {
                 'DONE'    { '[DONE]' }
@@ -885,7 +736,7 @@ function Export-SessionReport {
         $lines.Add('')
 
         foreach ($group in ($script:Steps | Group-Object Phase)) {
-            $lines.Add("--- $($group.Name) ---")
+            $lines.Add("--- $(Get-PhaseLabel $group.Name) ---")
             foreach ($step in $group.Group) {
                 $stepData = $script:Session.Steps["$($step.Index)"]
                 $ts       = if ($stepData -and $stepData.Timestamp) { "  ($($stepData.Timestamp))" } else { '' }
@@ -947,26 +798,26 @@ function Invoke-ResetSession {
 function Get-MenuItems {
     $items = [System.Collections.ArrayList]::new()
 
-    # Data Collection — no leading separator; it's the first visible group
-    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'DataCollection' })) {
+    # Scan, Check & Backup — first group, no leading separator
+    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'ScanCheckBackup' })) {
         $null = $items.Add($s)
     }
 
-    # Configuration Checks
+    # Configure
     $null = $items.Add((Get-MenuSeparator))
-    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'ConfigurationChecks' })) {
+    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'Configure' })) {
         $null = $items.Add($s)
     }
 
-    # Configuration Changes
+    # Install & Update
     $null = $items.Add((Get-MenuSeparator))
-    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'ConfigurationChanges' })) {
+    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'InstallUpdate' })) {
         $null = $items.Add($s)
     }
 
-    # Autopilot Readiness
+    # Autopilot
     $null = $items.Add((Get-MenuSeparator))
-    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'AutopilotReadiness' })) {
+    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'Autopilot' })) {
         $null = $items.Add($s)
     }
 
@@ -986,11 +837,11 @@ $script:Formatter = {
     if ($null -eq $item) { return '' }
 
     # Defensive: only format our expected step/workflow objects
-    if (-not ($item -is [PSCustomObject])) { return '' }
-    if (-not ($item.PSObject.Properties.Name -contains 'IsWorkflow')) { return '' }
+    if (-not ($item -is [PSCustomObject])) { return $item.ToString() }
+    if (-not ($item.PSObject.Properties.Name -contains 'IsWorkflow')) { return $item.ToString() }
 
     if ($item.IsWorkflow) {
-        return ("Action  {0}" -f $item.DisplayName)
+        return $item.DisplayName
     }
 
     $badge = switch ($item.Status) {
@@ -999,8 +850,7 @@ $script:Formatter = {
         'SKIP'  { '[SKIP]' }
         default { '[    ]' }
     }
-    $idx = $item.Index.ToString().PadLeft(2, '0')
-    return ("{0}  Step {1}  {2}" -f $badge, $idx, $item.DisplayName)
+    return "$badge  $($item.DisplayName)"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1043,7 +893,7 @@ try {
         Show-Header
 
         $menuItems = Get-MenuItems
-        $selected  = Show-Menu -MenuItems $menuItems -MenuItemFormatter $script:Formatter
+        $selected  = Show-Menu -MenuItems $menuItems -MenuItemFormatter $script:Formatter -ItemFocusColor Green
 
         # Escape / closed menu
         if ($null -eq $selected) { $running = $false; continue }
