@@ -131,7 +131,7 @@ $UserApps = @()
 
 $SkipSIDs   = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
 $CutoffDate = (Get-Date).AddDays(-30)
-$SkipNames  = @('ithlocal', 'itklocal')
+$SkipNames  = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
 
 try {
     $AllProfiles = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
