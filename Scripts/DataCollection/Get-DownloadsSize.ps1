@@ -268,3 +268,5 @@ if ($NonInteractive) {
     Write-Host ""
 }
 #endregion
+
+exit 0

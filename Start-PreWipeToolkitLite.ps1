@@ -90,9 +90,11 @@ $script:PrimaryProfile = $null
 try {
     $vpSkipSIDs   = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
     $vpSkipNames  = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
+    $vpCutoff = (Get-Date).AddDays(-30)
     $primaryProfileObj = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
         Where-Object { -not $_.Special -and $vpSkipSIDs -notcontains $_.SID } |
         Where-Object { $vpSkipNames -notcontains (Split-Path $_.LocalPath -Leaf).ToLower() } |
+        Where-Object { $_.LastUseTime -and $_.LastUseTime -ge $vpCutoff } |
         Sort-Object LastUseTime -Descending | Select-Object -First 1
     if ($primaryProfileObj) {
         $script:PrimaryProfile = Split-Path $primaryProfileObj.LocalPath -Leaf
