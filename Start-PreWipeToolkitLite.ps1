@@ -21,7 +21,7 @@
       8. Backup Desktop Background
       9. Backup Outlook Signatures
      10. Get Printers
-     11. Get Autopilot Assignment
+     11. Check Autopilot Profile
 
 .PARAMETER NonInteractive
     Suppresses all interactive prompts and display. Runs every step, emits a
@@ -131,7 +131,7 @@ $Steps = @(
     [PSCustomObject]@{ Index = 8;  DisplayName = 'Backup Desktop Background';    ScriptPath = 'Scripts\ConfigurationChanges\Backup-DesktopBackground.ps1' }
     [PSCustomObject]@{ Index = 9;  DisplayName = 'Backup Outlook Signatures';    ScriptPath = 'Scripts\ConfigurationChanges\Backup-OutlookSignatures.ps1' }
     [PSCustomObject]@{ Index = 10; DisplayName = 'Get Printers';                 ScriptPath = 'Scripts\DataCollection\Get-Printers.ps1' }
-    [PSCustomObject]@{ Index = 11; DisplayName = 'Get Autopilot Assignment';     ScriptPath = 'Scripts\AutopilotReadiness\Get-AutopilotAssignment.ps1' }
+    [PSCustomObject]@{ Index = 11; DisplayName = 'Check Autopilot Profile';      ScriptPath = 'Scripts\AutopilotReadiness\Get-AutopilotAssignment.ps1' }
 )
 
 $Results = @()
@@ -308,12 +308,13 @@ function Format-StepOutput {
         '*Get-AutopilotAssignment*' {
             $rows = @([PSCustomObject]@{
                 Serial     = $Parsed.SerialNumber
-                AssignedTo = if ($Parsed.AssignedUser) { $Parsed.AssignedUser } else { '(none)' }
+                Downloaded = if ($Parsed.ProfileDownloaded) { 'YES' } else { 'NO' }
+                Tenant     = if ($Parsed.TenantDomain) { $Parsed.TenantDomain } else { '(unknown)' }
+                AzureAD    = if ($Parsed.AzureADJoined) { 'Joined' } else { 'No' }
                 Profile    = if ($Parsed.ProfileName) { $Parsed.ProfileName } else { '(none)' }
-                State      = if ($Parsed.EnrollmentState) { $Parsed.EnrollmentState } else { 'Unknown' }
-                Method     = $Parsed.QueryMethod
+                User       = if ($Parsed.AssignedUser) { $Parsed.AssignedUser } else { '(none)' }
             })
-            Show-Table -Data $rows -Properties 'Serial','AssignedTo','Profile','State','Method'
+            Show-Table -Data $rows -Properties 'Serial','Downloaded','Tenant','AzureAD','Profile','User'
         }
     }
 }
@@ -385,8 +386,13 @@ function Get-StepSummary {
             }
             '*Get-AutopilotAssignment*' {
                 if ($Parsed.Error) { return "Error: $($Parsed.Error)" }
-                if ($Parsed.AssignedUser) { return "Assigned to $($Parsed.AssignedUser)" }
-                return 'No assignment found'
+                if ($Parsed.ProfileDownloaded) {
+                    $summary = 'Profile downloaded'
+                    if ($Parsed.TenantDomain) { $summary += " ($($Parsed.TenantDomain))" }
+                    if ($Parsed.AssignedUser) { $summary += " - $($Parsed.AssignedUser)" }
+                    return $summary
+                }
+                return 'No Autopilot profile found locally'
             }
             default { return 'Completed' }
         }
@@ -675,12 +681,14 @@ function Get-HtmlTable {
                 if ($Parsed.Printers) { $cols = @('Name','Type','PortName','DriverName','IsDefault'); $rows = @($Parsed.Printers) }
             }
             '*Get-AutopilotAssignment*' {
-                $cols = @('Serial','AssignedTo','Profile','State')
+                $cols = @('Serial','Downloaded','Tenant','AzureAD','Profile','User')
                 $rows = @([PSCustomObject]@{
                     Serial     = $Parsed.SerialNumber
-                    AssignedTo = if ($Parsed.AssignedUser) { $Parsed.AssignedUser } else { '(none)' }
+                    Downloaded = if ($Parsed.ProfileDownloaded) { 'YES' } else { 'NO' }
+                    Tenant     = if ($Parsed.TenantDomain) { $Parsed.TenantDomain } else { '(unknown)' }
+                    AzureAD    = if ($Parsed.AzureADJoined) { 'Joined' } else { 'No' }
                     Profile    = if ($Parsed.ProfileName) { $Parsed.ProfileName } else { '(none)' }
-                    State      = if ($Parsed.EnrollmentState) { $Parsed.EnrollmentState } else { 'Unknown' }
+                    User       = if ($Parsed.AssignedUser) { $Parsed.AssignedUser } else { '(none)' }
                 })
             }
         }

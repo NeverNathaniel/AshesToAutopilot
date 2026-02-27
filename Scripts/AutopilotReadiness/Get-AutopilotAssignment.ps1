@@ -1,41 +1,41 @@
 <#
 .SYNOPSIS
-    Queries Intune/Autopilot for the device's assigned user and deployment profile.
+    Checks for a locally downloaded Autopilot deployment profile and reports assignment details.
 
 .DESCRIPTION
-    - Connects to Microsoft Graph to query Autopilot device records.
-    - Looks up this device by serial number.
-    - Reports: device serial, assigned user UPN, assignment date if available.
-    - Requires the Microsoft.Graph.Authentication module or falls back to MSAL/REST.
+    Queries local registry and file system for Autopilot deployment profile data
+    instead of connecting to Microsoft Graph. Checks three locations:
+      1. Registry: HKLM:\SOFTWARE\Microsoft\Provisioning\Diagnostics\Autopilot
+      2. JSON file: C:\Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json
+      3. dsregcmd /status for Azure AD join and tenant information
+
+    Reports: serial number, tenant domain, tenant ID, profile downloaded (yes/no),
+    forced enrollment status, Azure AD join state, and deployment profile details.
 
 .PARAMETER NonInteractive
     Suppress all prompts. Output structured JSON to stdout. Exit cleanly.
 
-.PARAMETER TenantId
-    Optional: Azure AD Tenant ID. If not provided, attempts to detect from device join info.
-
 .EXAMPLE
     .\Get-AutopilotAssignment.ps1
     .\Get-AutopilotAssignment.ps1 -NonInteractive
-    .\Get-AutopilotAssignment.ps1 -TenantId "00000000-0000-0000-0000-000000000000"
 
 .NOTES
     Source repos used:
-    - public-main/Powershell Scripts/Intune/Harvest-hash-remediation/runbook.ps1
-      (Connect-MgGraph -Identity pattern, Graph API device query)
-    - public-main/Powershell Scripts/Intune/assign-autopilot-WIP.ps1
-      (Autopilot device assignment query patterns)
-    - public-main/Powershell Scripts/Intune/migrate-autopilot-device.ps1
-      (device serial lookup via Graph API)
+    - garytown-master/OSD/CloudOSD/OSDCloud-CloudFunctions_BACKUP.ps1
+      (Autopilot registry path HKLM:\SOFTWARE\Microsoft\Provisioning\Diagnostics\Autopilot,
+       CloudAssignedForcedEnrollment detection, profile property enumeration)
+    - garytown-master/OSD/CloudOSD/CopyJson.ps1
+      (AutopilotConfigurationFile.json path at C:\Windows\Provisioning\Autopilot\)
+    - public-main/Powershell Scripts/Intune/create-windows-iso-with-apjson.ps1
+      (Autopilot JSON structure: CloudAssignedTenantDomain, ZtdCorrelationId, etc.)
 
-    Requires: Administrator, Microsoft.Graph or Az module, Intune permissions
-    Output:   C:\PreWipeOutput\Logs\Get-AutopilotAssignment.log
+    Requires: Administrator
+    Output:   C:\PreWipeOutput\Logs\AutopilotAssignment-Report.json
 #>
 
 [CmdletBinding()]
 param(
-    [switch]$NonInteractive,
-    [string]$TenantId = ''
+    [switch]$NonInteractive
 )
 
 #region --- Init ---
@@ -70,17 +70,21 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 #region --- Get Serial Number ---
 $Result = [PSCustomObject]@{
-    Timestamp      = (Get-Date -Format 'o')
-    SerialNumber   = $null
-    DeviceId       = $null
-    AssignedUser   = $null
-    AssignedUserUPN = $null
-    AssignmentDate = $null
-    GroupTag       = $null
-    ProfileName    = $null
-    EnrollmentState = $null
-    QueryMethod    = $null
-    Error          = $null
+    Timestamp             = (Get-Date -Format 'o')
+    SerialNumber          = $null
+    ProfileDownloaded     = $false
+    ForcedEnrollment      = $false
+    TenantDomain          = $null
+    TenantId              = $null
+    AzureADJoined         = $false
+    DeviceName            = $null
+    CorrelationId         = $null
+    OobeConfig            = $null
+    ProfileSource         = $null
+    AssignedUser          = $null
+    ProfileName           = $null
+    EnrollmentState       = $null
+    Error                 = $null
 }
 
 try {
@@ -89,86 +93,151 @@ try {
     Write-Log "Device serial number: $($Result.SerialNumber)"
 } catch {
     Write-ErrorLog "Failed to get serial number: $_"
-    $Result.Error = $_
-    if ($NonInteractive) { $Result | ConvertTo-Json | Write-Output; exit 1 }
-    exit 1
-}
-
-# Try to detect tenant from DSReg
-if (-not $TenantId) {
-    try {
-        $dsregOutput = & dsregcmd /status 2>&1 | Out-String
-        if ($dsregOutput -match 'TenantId\s*:\s*([a-f0-9-]{36})') {
-            $TenantId = $Matches[1]
-            Write-Log "Tenant ID from dsregcmd: $TenantId"
-        }
-    } catch {}
+    $Result.Error = $_.ToString()
 }
 #endregion
 
-#region --- Graph Query ---
-Write-Log "Installing Microsoft.Graph.Authentication if needed..."
+#region --- Check 1: Autopilot Registry ---
+Write-Log "Checking Autopilot registry keys..."
+$regPath = 'HKLM:\SOFTWARE\Microsoft\Provisioning\Diagnostics\Autopilot'
+
 try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    if (Test-Path $regPath) {
+        $regData = Get-ItemProperty -Path $regPath -ErrorAction Stop
 
-    if (-not (Get-Module -Name 'Microsoft.Graph.Authentication' -ListAvailable)) {
-        $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction SilentlyContinue
-        Install-Module -Name 'Microsoft.Graph.Authentication' -Force -Scope AllUsers -ErrorAction Stop
-        Write-Log "Microsoft.Graph.Authentication installed"
-    }
-
-    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
-
-    # Connect to Graph (interactive or device code)
-    $connectParams = @{ Scopes = 'DeviceManagementServiceConfig.Read.All', 'DeviceManagementManagedDevices.Read.All' }
-    if ($TenantId) { $connectParams.TenantId = $TenantId }
-
-    Write-Log "Connecting to Microsoft Graph..."
-    if ($NonInteractive) {
-        Connect-MgGraph @connectParams -NoWelcome -ErrorAction Stop
-    } else {
-        Connect-MgGraph @connectParams -NoWelcome -ErrorAction Stop
-    }
-
-    $Result.QueryMethod = 'MicrosoftGraph'
-
-    # Query Autopilot devices by serial number
-    $serial = [System.Web.HttpUtility]::UrlEncode($Result.SerialNumber)
-    $uri    = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=serialNumber eq '$($Result.SerialNumber)'"
-
-    Write-Log "Querying Graph API: $uri"
-    $response = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
-
-    if ($response.value -and $response.value.Count -gt 0) {
-        $device = $response.value[0]
-        $Result.DeviceId    = $device.id
-        $Result.GroupTag    = $device.groupTag
-        $Result.ProfileName = $device.deploymentProfileAssignmentDetailedStatus
-
-        # Get assigned user
-        if ($device.assignedUserPrincipalName) {
-            $Result.AssignedUserUPN = $device.assignedUserPrincipalName
-            $Result.AssignedUser    = $device.assignedUserPrincipalName
+        if ($regData.CloudAssignedForcedEnrollment -eq 1) {
+            $Result.ProfileDownloaded = $true
+            $Result.ForcedEnrollment  = $true
+            $Result.ProfileSource     = 'Registry'
+            Write-Log "Autopilot profile found in registry (forced enrollment enabled)"
         }
 
-        $Result.EnrollmentState = $device.enrollmentState
-        $Result.AssignmentDate  = $device.deploymentProfileAssignedDateTime
+        if ($regData.CloudAssignedTenantDomain) {
+            $Result.TenantDomain = $regData.CloudAssignedTenantDomain
+            Write-Log "Tenant domain: $($Result.TenantDomain)"
+        }
 
-        Write-Log "Device found in Autopilot"
-        Write-Log "  Assigned User: $($Result.AssignedUserUPN ?? 'None')"
-        Write-Log "  Group Tag: $($Result.GroupTag ?? 'None')"
-        Write-Log "  Enrollment State: $($Result.EnrollmentState)"
+        if ($regData.TenantId) {
+            $Result.TenantId = $regData.TenantId
+            Write-Log "Tenant ID: $($Result.TenantId)"
+        }
+
+        if ($regData.CloudAssignedOobeConfig) {
+            $Result.OobeConfig = $regData.CloudAssignedOobeConfig.ToString()
+        }
+
+        if ($regData.AutopilotServiceCorrelationId) {
+            $Result.CorrelationId = $regData.AutopilotServiceCorrelationId
+        }
+
+        if ($regData.IsAutoPilotDisabled -eq 0 -or $null -eq $regData.IsAutoPilotDisabled) {
+            Write-Log "Autopilot is NOT disabled"
+        } elseif ($regData.IsAutoPilotDisabled -eq 1) {
+            Write-Log "WARNING: IsAutoPilotDisabled = 1" 'WARN'
+        }
     } else {
-        Write-Log "Device not found in Autopilot records for serial: $($Result.SerialNumber)" 'WARN'
-        $Result.Error = "Device not found in Autopilot"
+        Write-Log "Autopilot registry path not found: $regPath" 'WARN'
+    }
+} catch {
+    Write-ErrorLog "Error reading Autopilot registry: $_"
+}
+#endregion
+
+#region --- Check 2: Autopilot JSON File ---
+Write-Log "Checking for Autopilot configuration JSON file..."
+$jsonPath = 'C:\Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json'
+
+try {
+    if (Test-Path $jsonPath) {
+        $jsonContent = Get-Content $jsonPath -Raw -ErrorAction Stop | ConvertFrom-Json
+
+        $Result.ProfileDownloaded = $true
+        if (-not $Result.ProfileSource) { $Result.ProfileSource = 'JSON File' }
+        else { $Result.ProfileSource += ' + JSON File' }
+
+        Write-Log "AutopilotConfigurationFile.json found"
+
+        if ($jsonContent.CloudAssignedTenantDomain -and -not $Result.TenantDomain) {
+            $Result.TenantDomain = $jsonContent.CloudAssignedTenantDomain
+        }
+        if ($jsonContent.CloudAssignedTenantId -and -not $Result.TenantId) {
+            $Result.TenantId = $jsonContent.CloudAssignedTenantId
+        }
+        if ($jsonContent.CloudAssignedDeviceName) {
+            $Result.DeviceName = $jsonContent.CloudAssignedDeviceName
+            Write-Log "Assigned device name template: $($Result.DeviceName)"
+        }
+        if ($jsonContent.ZtdCorrelationId -and -not $Result.CorrelationId) {
+            $Result.CorrelationId = $jsonContent.ZtdCorrelationId
+        }
+        if ($jsonContent.CloudAssignedForcedEnrollment -eq 1) {
+            $Result.ForcedEnrollment = $true
+        }
+
+        # Try to extract assigned user from AadServerData
+        if ($jsonContent.CloudAssignedAadServerData) {
+            try {
+                $aadData = $jsonContent.CloudAssignedAadServerData | ConvertFrom-Json -ErrorAction SilentlyContinue
+                if ($aadData.ZeroTouchConfig) {
+                    $ztConfig = $aadData.ZeroTouchConfig | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    if ($ztConfig.ForcedEnrollment -and $ztConfig.ForcedEnrollment.UPN) {
+                        $Result.AssignedUser = $ztConfig.ForcedEnrollment.UPN
+                        Write-Log "Assigned user from JSON: $($Result.AssignedUser)"
+                    }
+                }
+            } catch {
+                Write-Log "Could not parse AadServerData for user assignment" 'WARN'
+            }
+        }
+    } else {
+        Write-Log "AutopilotConfigurationFile.json not found at $jsonPath"
+    }
+} catch {
+    Write-ErrorLog "Error reading Autopilot JSON file: $_"
+}
+#endregion
+
+#region --- Check 3: dsregcmd for Azure AD join status ---
+Write-Log "Checking Azure AD join status via dsregcmd..."
+try {
+    $dsregOutput = & dsregcmd /status 2>&1 | Out-String
+
+    if ($dsregOutput -match 'AzureAdJoined\s*:\s*YES') {
+        $Result.AzureADJoined = $true
+        Write-Log "Device is Azure AD Joined"
+    } else {
+        Write-Log "Device is NOT Azure AD Joined"
     }
 
-    Disconnect-MgGraph -ErrorAction SilentlyContinue
+    if ($dsregOutput -match 'TenantId\s*:\s*([a-f0-9-]{36})') {
+        if (-not $Result.TenantId) {
+            $Result.TenantId = $Matches[1]
+            Write-Log "Tenant ID from dsregcmd: $($Result.TenantId)"
+        }
+    }
 
+    if ($dsregOutput -match 'TenantName\s*:\s*(.+)') {
+        $tenantName = $Matches[1].Trim()
+        if ($tenantName -and -not $Result.TenantDomain) {
+            $Result.TenantDomain = $tenantName
+        }
+    }
 } catch {
-    Write-ErrorLog "Graph query failed: $_"
-    $Result.Error = $_.ToString()
-    $Result.QueryMethod = 'Failed'
+    Write-ErrorLog "dsregcmd failed: $_"
+}
+#endregion
+
+#region --- Derive summary fields ---
+if ($Result.ProfileDownloaded) {
+    $Result.EnrollmentState = 'ProfileDownloaded'
+    if ($Result.ForcedEnrollment) {
+        $Result.ProfileName = 'Autopilot (Forced Enrollment)'
+    } else {
+        $Result.ProfileName = 'Autopilot (Self-Deploying or User-Driven)'
+    }
+} else {
+    $Result.EnrollmentState = 'NoProfileFound'
+    $Result.ProfileName = '(none)'
 }
 #endregion
 
@@ -179,14 +248,17 @@ if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
 } else {
     Write-Host ""
-    Write-Host "=== Autopilot Assignment ===" -ForegroundColor Cyan
-    Write-Host "  Serial Number:   $($Result.SerialNumber)"
-    Write-Host "  Device ID:       $($Result.DeviceId ?? 'Not found')"
-    Write-Host "  Assigned User:   $($Result.AssignedUserUPN ?? 'None')"
-    Write-Host "  Assignment Date: $($Result.AssignmentDate ?? 'N/A')"
-    Write-Host "  Group Tag:       $($Result.GroupTag ?? 'None')"
-    Write-Host "  Profile:         $($Result.ProfileName ?? 'Unknown')"
-    Write-Host "  Enrollment:      $($Result.EnrollmentState ?? 'Unknown')"
+    Write-Host "=== Autopilot Assignment (Local Check) ===" -ForegroundColor Cyan
+    Write-Host "  Serial Number:      $($Result.SerialNumber)"
+    Write-Host "  Profile Downloaded: $(if ($Result.ProfileDownloaded) { 'YES' } else { 'NO' })" -ForegroundColor $(if ($Result.ProfileDownloaded) { 'Green' } else { 'Yellow' })
+    Write-Host "  Forced Enrollment:  $($Result.ForcedEnrollment)"
+    Write-Host "  Tenant Domain:      $(if ($Result.TenantDomain) { $Result.TenantDomain } else { '(not found)' })"
+    Write-Host "  Tenant ID:          $(if ($Result.TenantId) { $Result.TenantId } else { '(not found)' })"
+    Write-Host "  Azure AD Joined:    $($Result.AzureADJoined)"
+    Write-Host "  Assigned User:      $(if ($Result.AssignedUser) { $Result.AssignedUser } else { '(not embedded in profile)' })"
+    Write-Host "  Device Name:        $(if ($Result.DeviceName) { $Result.DeviceName } else { '(not set)' })"
+    Write-Host "  Profile Source:     $(if ($Result.ProfileSource) { $Result.ProfileSource } else { 'None' })"
+    Write-Host "  Correlation ID:     $(if ($Result.CorrelationId) { $Result.CorrelationId } else { '(none)' })"
     if ($Result.Error) { Write-Host "  Error: $($Result.Error)" -ForegroundColor Yellow }
     Write-Host ""
     Write-Host "Report: $OutputRoot\Logs\AutopilotAssignment-Report.json"

@@ -74,7 +74,7 @@ Write-Log "Windows build: $OSBuild | Win11: $IsWin11"
 #region --- Profile Enumeration ---
 $SkipSIDs   = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
 $CutoffDate = (Get-Date).AddDays(-30)
-$SkipNames  = @('ithlocal', 'itklocal', 'wsi', 'defaultuser0', 'administrator', 'guest')
+$SkipNames  = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
 
 $Profiles = @()
 try {
