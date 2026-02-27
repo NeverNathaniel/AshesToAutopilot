@@ -211,6 +211,5 @@ if ($NonInteractive) {
     Write-Host "  Changes made:"
     foreach ($c in $Changes) { Write-Host "    - $c" }
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

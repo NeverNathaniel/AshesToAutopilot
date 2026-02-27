@@ -62,7 +62,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 #region --- Profile Enumeration ---
 $SkipSIDs   = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
 $CutoffDate = (Get-Date).AddDays(-30)
-$SkipNames  = @('ithlocal', 'itklocal')
+$SkipNames  = @('ithlocal', 'itklocal', 'wsi', 'defaultuser0', 'administrator', 'guest')
 
 $Profiles = @()
 try {
@@ -167,6 +167,5 @@ if ($NonInteractive) {
     Write-Host ""
     Write-Host "Report: $OutputRoot\Logs\DriveMappings-Report.json"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

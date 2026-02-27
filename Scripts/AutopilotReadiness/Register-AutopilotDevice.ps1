@@ -209,6 +209,5 @@ if ($NonInteractive) {
     Write-Host ""
     Write-Host "CSV saved: $OutputRoot\AutopilotHash.csv"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

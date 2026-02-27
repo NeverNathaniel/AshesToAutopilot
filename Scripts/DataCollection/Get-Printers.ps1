@@ -61,26 +61,56 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 #endregion
 
 #region --- Printer Inventory ---
+# Virtual/software printer names and driver patterns to exclude
+$ExcludeNames = @(
+    'Microsoft Print to PDF',
+    'Microsoft XPS Document Writer',
+    'Fax',
+    'OneNote',
+    'Send To OneNote'
+)
+
 $PrinterList = @()
 
 try {
     Write-Log "Querying installed printers via Win32_Printer..."
-    $printers = Get-CimInstance -ClassName Win32_Printer -ErrorAction Stop
+    $allPrinters = Get-CimInstance -ClassName Win32_Printer -ErrorAction Stop
+
+    # Filter to physical printers only
+    $printers = $allPrinters | Where-Object {
+        $name   = $_.Name
+        $driver = $_.DriverName
+        $port   = $_.PortName
+
+        # Exact-match or wildcard exclude by name
+        $skipByName = $false
+        foreach ($excl in $ExcludeNames) {
+            if ($name -like "*$excl*") { $skipByName = $true; break }
+        }
+        if ($skipByName) { Write-Log "  Excluding virtual printer: $name"; return $false }
+
+        # Exclude PDF/XPS drivers
+        if ($driver -match 'PDF|XPS') { Write-Log "  Excluding PDF/XPS driver printer: $name"; return $false }
+
+        # Exclude virtual ports
+        if ($port -match '^(PORTPROMPT:|nul:|SHRFAX:|FILE:)') { Write-Log "  Excluding virtual-port printer: $name"; return $false }
+
+        return $true
+    }
+
+    Write-Log "Total printers: $($allPrinters.Count) | Physical after filter: $($printers.Count)"
 
     foreach ($p in $printers) {
-        $isNetwork = $p.Network -or $p.PortName -match '\\\\|IP_|WSD-|HTTP'
+        $isNetwork = $p.Network -or $p.PortName -match '(\\\\|^IP_|^WSD-|^HTTP|^TCP)'
         $printerType = if ($isNetwork) { 'Network' } else { 'Local' }
 
         $PrinterList += [PSCustomObject]@{
-            Name          = $p.Name
-            PortName      = $p.PortName
-            DriverName    = $p.DriverName
-            IsDefault     = [bool]$p.Default
-            IsShared      = [bool]$p.Shared
-            Type          = $printerType
-            Location      = $p.Location
-            Comment       = $p.Comment
-            Status        = $p.PrinterStatus
+            Name       = $p.Name
+            PortName   = $p.PortName
+            DriverName = $p.DriverName
+            IsDefault  = [bool]$p.Default
+            Type       = $printerType
+            Status     = $p.PrinterStatus
         }
 
         $defaultStr = if ($p.Default) { ' [DEFAULT]' } else { '' }
@@ -108,16 +138,14 @@ if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 5
 } else {
     Write-Host ""
-    Write-Host "=== Installed Printers ($($PrinterList.Count)) ===" -ForegroundColor Cyan
-    foreach ($pr in $PrinterList) {
-        $defStr = if ($pr.IsDefault) { ' [DEFAULT]' } else { '' }
-        Write-Host "  $($pr.Name)$defStr"
-        Write-Host "    Port: $($pr.PortName) | Driver: $($pr.DriverName) | Type: $($pr.Type)"
+    Write-Host "=== Physical Printers ($($PrinterList.Count)) ===" -ForegroundColor Cyan
+    if ($PrinterList.Count -eq 0) {
+        Write-Host "  No physical printers found." -ForegroundColor Yellow
+    } else {
+        $PrinterList | Format-Table -AutoSize -Property Name, Type, PortName, DriverName, IsDefault, Status | Out-String | Write-Host
     }
-    Write-Host ""
-    Write-Host "Default: $($DefaultPrinter.Name ?? 'None')"
+    Write-Host "Default: $($DefaultPrinter.Name ?? 'None')" -ForegroundColor Cyan
     Write-Host "Report: $OutputRoot\Logs\Printers-Report.json"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

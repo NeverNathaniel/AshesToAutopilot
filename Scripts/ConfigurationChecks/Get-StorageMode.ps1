@@ -184,6 +184,5 @@ if ($NonInteractive) {
     Write-Host ""
     Write-Host "Report: $OutputRoot\Logs\StorageMode-Report.json"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

@@ -185,6 +185,5 @@ if ($NonInteractive) {
     Write-Host ""
     Write-Host "Full log: $OutputRoot\Logs\DCU-Driver-Update.log"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

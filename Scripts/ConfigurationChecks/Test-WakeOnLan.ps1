@@ -223,6 +223,5 @@ if ($NonInteractive) {
     Write-Host ""
     Write-Host "Report: $OutputRoot\Logs\WakeOnLan-Status.json"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

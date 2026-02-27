@@ -180,15 +180,36 @@ if ($NonInteractive) {
 } else {
     Write-Host ""
     Write-Host "=== Autopilot Profile Status ===" -ForegroundColor Cyan
-    $color = if ($Result.ProfilePresent) { 'Green' } else { 'Yellow' }
-    Write-Host "  Profile Present:  $($Result.ProfilePresent)" -ForegroundColor $color
-    Write-Host "  Tenant Domain:    $($Result.TenantDomain ?? 'Unknown')"
-    Write-Host "  Tenant ID:        $($Result.TenantID ?? 'Unknown')"
-    Write-Host "  Deployment Mode:  $($Result.DeploymentMode ?? 'Unknown')"
-    Write-Host "  Sources found:    $($Result.Sources -join ', ')"
     Write-Host ""
-    Write-Host "Report: $OutputRoot\Logs\AutopilotProfile-Status.json"
+
+    if (-not $Result.ProfilePresent) {
+        Write-Host "  NO AUTOPILOT PROFILE FOUND ON THIS DEVICE." -ForegroundColor Red
+        Write-Host "  The device has not received an Autopilot deployment profile." -ForegroundColor Red
+    } else {
+        # Map deployment mode integer to label
+        $modeLabel = switch ($Result.DeploymentMode) {
+            0       { 'User-Driven AAD Join' }
+            1       { 'Self-Deploying' }
+            2       { 'User-Driven Hybrid AAD Join' }
+            default { if ($Result.DeploymentMode) { $Result.DeploymentMode.ToString() } else { 'Unknown' } }
+        }
+
+        [PSCustomObject]@{
+            'Profile Present'   = 'Yes'
+            'Tenant Domain'     = $Result.TenantDomain ?? 'Unknown'
+            'Tenant ID'         = $Result.TenantID ?? 'Unknown'
+            'Deployment Mode'   = $modeLabel
+            'Profile Name/ID'   = $Result.ProfileName ?? 'Unknown'
+            'Sources'           = ($Result.Sources -join '; ')
+        } | Format-List | Out-String | ForEach-Object { Write-Host $_ -ForegroundColor Green }
+
+        if ($Result.Error) {
+            Write-Host "  Warning: $($Result.Error)" -ForegroundColor Yellow
+        }
+    }
+
     Write-Host ""
-    Read-Host "Press Enter to continue"
+    Write-Host "Report: $OutputRoot\Logs\AutopilotProfile-Status.json" -ForegroundColor Cyan
+    Write-Host ""
 }
 #endregion

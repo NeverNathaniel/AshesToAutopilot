@@ -65,8 +65,11 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $Results = @()
 
 try {
-    # Get all fixed volumes
-    $volumes = Get-BitLockerVolume -ErrorAction Stop | Where-Object { $_.VolumeType -eq 'OperatingSystem' -or $_.VolumeType -eq 'Data' }
+    # Check system drive first, then any additional data volumes
+    $sysDrive = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop
+    $dataVolumes = Get-BitLockerVolume -ErrorAction SilentlyContinue |
+        Where-Object { $_.MountPoint -ne $env:SystemDrive -and $_.VolumeType -eq 'Data' }
+    $volumes = @($sysDrive) + @($dataVolumes) | Where-Object { $_ }
 
     foreach ($vol in $volumes) {
         $drive = $vol.MountPoint
@@ -129,8 +132,12 @@ try {
                     }
                 }
             } else {
-                Write-Log "  No recovery key protector found on $drive" 'WARN'
                 $volResult.EscrowStatus = 'NoRecoveryKey'
+                $volResult.Error = 'No RecoveryPassword key protector found. Cannot escrow.'
+                Write-Log "  ERROR: No RecoveryPassword protector on $drive - escrow cannot proceed" 'ERROR'
+                if (-not $NonInteractive) {
+                    Write-Host "  ERROR: $drive has no RecoveryPassword protector - escrow skipped." -ForegroundColor Red
+                }
             }
         } elseif ($vol.ProtectionStatus -eq 'Off') {
             Write-Log "  Drive $($drive): BitLocker protection is OFF (may be fully decrypted)"
@@ -164,13 +171,21 @@ if ($NonInteractive) {
 } else {
     Write-Host ""
     Write-Host "=== BitLocker Escrow Status ===" -ForegroundColor Cyan
+    $Results | Select-Object DriveLetter, VolumeType, EncryptionStatus, EscrowStatus, ActionTaken, Error |
+        Format-Table -AutoSize | Out-String | Write-Host
     foreach ($r in $Results) {
-        $color = if ($r.EscrowStatus -match 'Escrowed|EscrowAttempted') { 'Green' } elseif ($r.Error) { 'Red' } else { 'Yellow' }
-        Write-Host "  $($r.DriveLetter): Status=$($r.EncryptionStatus) | Escrow=$($r.EscrowStatus) | Action=$($r.ActionTaken)" -ForegroundColor $color
+        if ($r.EscrowStatus -eq 'NoRecoveryKey' -or $r.EscrowStatus -eq 'EscrowFailed') {
+            Write-Host "  FAIL $($r.DriveLetter): $($r.Error)" -ForegroundColor Red
+        } elseif ($r.EscrowStatus -eq 'EscrowAttempted') {
+            Write-Host "  OK   $($r.DriveLetter): Escrow command succeeded." -ForegroundColor Green
+        } elseif ($r.EscrowStatus -eq 'NotEncrypted') {
+            Write-Host "  WARN $($r.DriveLetter): BitLocker not enabled." -ForegroundColor Yellow
+        } elseif ($r.EscrowStatus -eq 'NotAzureADJoined') {
+            Write-Host "  WARN $($r.DriveLetter): Device not Azure AD joined - escrow skipped." -ForegroundColor Yellow
+        }
     }
     Write-Host ""
     Write-Host "Report: $OutputRoot\Logs\BitLockerEscrow-Report.json"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

@@ -191,6 +191,5 @@ if ($NonInteractive) {
     Write-Host ""
     Write-Host "Report: $OutputRoot\Logs\AutopilotAssignment-Report.json"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

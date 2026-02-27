@@ -269,6 +269,5 @@ if ($NonInteractive) {
     Write-Host "DCC: $($DCCResult.Version) | Action: $($DCCResult.Action) | Success: $($DCCResult.Success)"
     Write-Host "Log: $LogFile"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion

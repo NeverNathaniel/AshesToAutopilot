@@ -188,6 +188,5 @@ if ($NonInteractive) {
     Write-Host ""
     Write-Host "Full log: C:\PreWipeOutput\Logs\DCU-BIOS-Update.log"
     Write-Host ""
-    Read-Host "Press Enter to continue"
 }
 #endregion
