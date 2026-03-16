@@ -406,8 +406,8 @@ if (-not $HuduApiKey) {
 }
 
 try {
-    New-HuduAPIKey -ApiKey $HuduApiKey
-    New-HuduBaseUrl -BaseUrl $HuduBaseUrl
+    New-HuduAPIKey $HuduApiKey
+    New-HuduBaseURL $HuduBaseUrl
     Write-Log "Hudu API initialized."
 } catch {
     Write-ErrorLog "Failed to initialize Hudu API: $_"
@@ -462,7 +462,7 @@ if (-not $layout) {
         @{ label = 'Blockers';               field_type = 'RichText'; show_in_list = $false; required = $false }
     )
     try {
-        $layout = New-HuduAssetLayout -Name $AssetLayoutName -Icon 'fas fa-laptop' -Color '#2c5f8a' -Fields $layoutFields -ErrorAction Stop
+        $layout = (New-HuduAssetLayout -Name $AssetLayoutName -Icon 'fas fa-laptop' -Color '#2c5f8a' -IconColor '#ffffff' -Fields $layoutFields -ErrorAction Stop).asset_layout
         Write-Log "Asset layout created (ID $($layout.id))."
     } catch {
         Write-ErrorLog "Failed to create asset layout: $_"
@@ -486,23 +486,25 @@ try {
 #endregion
 
 #region --- Build Field Values ---
-$fields = @(
-    @{ field_name = 'Serial Number';             value = if ($serialNumber) { $serialNumber } else { '' } }
-    @{ field_name = 'Device Model';              value = if ($deviceModel)  { $deviceModel }  else { '' } }
-    @{ field_name = 'Operating System';          value = if ($osCaption)    { $osCaption }    else { '' } }
-    @{ field_name = 'OS Build';                  value = if ($osBuild)      { $osBuild }      else { '' } }
-    @{ field_name = 'Domain';                    value = if ($domainName)   { $domainName }   else { 'Not domain-joined' } }
-    @{ field_name = 'Autopilot Readiness';       value = $overallReadiness }
-    @{ field_name = 'Wipe Verdict';              value = $wipeVerdict }
-    @{ field_name = 'Autopilot Profile';         value = if ($profileDownloaded) { 'Downloaded' } else { 'Not downloaded' } }
-    @{ field_name = 'Tenant Domain';             value = if ($tenantDomain) { $tenantDomain } else { '' } }
-    @{ field_name = 'Last Checked';              value = $lastChecked }
-    @{ field_name = 'Hardware Checks';           value = $hwHtml }
-    @{ field_name = 'Security Status';           value = $securityHtml }
-    @{ field_name = 'Autopilot Profile Details'; value = $profileHtml }
-    @{ field_name = 'Phase Progress';            value = $phaseHtml }
-    @{ field_name = 'Blockers';                 value = $blockersHtml }
-)
+# HuduAPI expects a hashtable keyed by the field label slug
+# (label lowercased, spaces replaced with underscores)
+$fields = @{
+    'serial_number'             = if ($serialNumber) { $serialNumber } else { '' }
+    'device_model'              = if ($deviceModel)  { $deviceModel }  else { '' }
+    'operating_system'          = if ($osCaption)    { $osCaption }    else { '' }
+    'os_build'                  = if ($osBuild)      { $osBuild }      else { '' }
+    'domain'                    = if ($domainName)   { $domainName }   else { 'Not domain-joined' }
+    'autopilot_readiness'       = $overallReadiness
+    'wipe_verdict'              = $wipeVerdict
+    'autopilot_profile'         = if ($profileDownloaded) { 'Downloaded' } else { 'Not downloaded' }
+    'tenant_domain'             = if ($tenantDomain) { $tenantDomain } else { '' }
+    'last_checked'              = $lastChecked
+    'hardware_checks'           = $hwHtml
+    'security_status'           = $securityHtml
+    'autopilot_profile_details' = $profileHtml
+    'phase_progress'            = $phaseHtml
+    'blockers'                  = $blockersHtml
+}
 #endregion
 
 #region --- Create or Update Asset ---
@@ -515,7 +517,7 @@ try {
         $assetId     = $asset.id
     } else {
         Write-Log "Creating new asset '$assetName'..."
-        $newAsset = New-HuduAsset -Name $assetName -AssetLayoutId $layout.id -CompanyId $company.id -Fields $fields -ErrorAction Stop
+        $newAsset = (New-HuduAsset -Name $assetName -AssetLayoutId $layout.id -CompanyId $company.id -Fields $fields -ErrorAction Stop).asset
         Write-Log "Asset created (ID $($newAsset.id))."
         $assetAction = 'Created'
         $assetId     = $newAsset.id
