@@ -3,7 +3,7 @@
     Interactive orchestrator for the Pre-Wipe Toolkit.
 
 .DESCRIPTION
-    Menu-driven workflow that guides a tech through all 29 pre-wipe preparation
+    Menu-driven workflow that guides a tech through all 31 pre-wipe preparation
     steps across four categories: Scan/Check/Backup, Configure,
     Install & Update, and Autopilot.
 
@@ -159,249 +159,48 @@ function Get-PhaseLabel([string]$Phase) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP DEFINITIONS  (29 steps — ordered by impact level)
+# STEP DEFINITIONS  (31 steps — ordered by impact level)
 # ScriptPath is relative to $PSScriptRoot
 # ─────────────────────────────────────────────────────────────────────────────
 $script:Steps = @(
     # ── Scan, Check & Backup (low impact — read-only or backup only) ───────
-    [PSCustomObject]@{
-        Index       = 1
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Scan for Unbacked Data & Non-Std Apps'
-        ScriptPath  = 'Scripts\DataCollection\Find-UnbackedData.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 2
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Check Downloads Folder Sizes'
-        ScriptPath  = 'Scripts\DataCollection\Get-DownloadsSize.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 3
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Get Drive Mappings'
-        ScriptPath  = 'Scripts\DataCollection\Get-DriveMappings.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 4
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'List Physical Printers'
-        ScriptPath  = 'Scripts\DataCollection\Get-Printers.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 5
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Get Windows Product Key'
-        ScriptPath  = 'Scripts\DataCollection\Get-WindowsProductKey.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 6
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Get Installed Applications'
-        ScriptPath  = 'Scripts\DataCollection\Get-InstalledApplications.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 7
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Get Device Health Report'
-        ScriptPath  = 'Scripts\DataCollection\Get-DeviceHealth.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 8
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Test OneDrive KFM Status'
-        ScriptPath  = 'Scripts\ConfigurationChecks\Test-OneDriveKFM.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 9
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Test OneDrive Sync Status'
-        ScriptPath  = 'Scripts\ConfigurationChecks\Test-OneDriveSyncStatus.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 10
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Get Storage Controller Mode'
-        ScriptPath  = 'Scripts\ConfigurationChecks\Get-StorageMode.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 11
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Test BIOS Version (Dell)'
-        ScriptPath  = 'Scripts\ConfigurationChecks\Test-BiosVersion.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 12
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Test Driver Status (Dell DCU)'
-        ScriptPath  = 'Scripts\ConfigurationChecks\Test-DriverStatus.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 13
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Test Wake-on-LAN Settings'
-        ScriptPath  = 'Scripts\ConfigurationChecks\Test-WakeOnLan.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 14
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Test Windows Recovery (WinRE)'
-        ScriptPath  = 'Scripts\ConfigurationChecks\Test-WinRE.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 15
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Backup Browser Bookmarks'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-BrowserBookmarks.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 16
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Backup Desktop Background'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-DesktopBackground.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 17
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Backup Outlook Signatures'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-OutlookSignatures.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 18
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Backup Taskbar Layout'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-TaskbarLayout.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 19
-        Phase       = 'ScanCheckBackup'
-        DisplayName = 'Backup Wi-Fi Profiles'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-WiFiProfiles.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
+    [PSCustomObject]@{ Index =  1; Phase = 'ScanCheckBackup'; DisplayName = 'Scan for Unbacked Data & Non-Std Apps'; ScriptPath = 'Scripts\DataCollection\Find-UnbackedData.ps1';                   Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index =  2; Phase = 'ScanCheckBackup'; DisplayName = 'Check Downloads Folder Sizes';          ScriptPath = 'Scripts\DataCollection\Get-DownloadsSize.ps1';                   Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index =  3; Phase = 'ScanCheckBackup'; DisplayName = 'Get Drive Mappings';                    ScriptPath = 'Scripts\DataCollection\Get-DriveMappings.ps1';                   Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index =  4; Phase = 'ScanCheckBackup'; DisplayName = 'List Printers';                         ScriptPath = 'Scripts\DataCollection\Get-Printers.ps1';                        Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index =  5; Phase = 'ScanCheckBackup'; DisplayName = 'Get Windows Product Key';               ScriptPath = 'Scripts\DataCollection\Get-WindowsProductKey.ps1';               Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index =  6; Phase = 'ScanCheckBackup'; DisplayName = 'Get Installed Applications';            ScriptPath = 'Scripts\DataCollection\Get-InstalledApplications.ps1';           Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index =  7; Phase = 'ScanCheckBackup'; DisplayName = 'Get Device Health Report';              ScriptPath = 'Scripts\DataCollection\Get-DeviceHealth.ps1';                    Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index =  8; Phase = 'ScanCheckBackup'; DisplayName = 'Get Teams Chat & Meeting Data';         ScriptPath = 'Scripts\DataCollection\Get-TeamsData.ps1';                       Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index =  9; Phase = 'ScanCheckBackup'; DisplayName = 'Get Credential Manager Entries';        ScriptPath = 'Scripts\DataCollection\Get-CredentialManagerEntries.ps1';        Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 10; Phase = 'ScanCheckBackup'; DisplayName = 'Get Local Accounts';                    ScriptPath = 'Scripts\DataCollection\Get-LocalAccounts.ps1';                   Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 11; Phase = 'ScanCheckBackup'; DisplayName = 'Test OneDrive KFM Status';              ScriptPath = 'Scripts\ConfigurationChecks\Test-OneDriveKFM.ps1';               Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 12; Phase = 'ScanCheckBackup'; DisplayName = 'Test OneDrive Sync Status';             ScriptPath = 'Scripts\ConfigurationChecks\Test-OneDriveSyncStatus.ps1';        Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 13; Phase = 'ScanCheckBackup'; DisplayName = 'Get Storage Controller Mode';           ScriptPath = 'Scripts\ConfigurationChecks\Get-StorageMode.ps1';                Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 14; Phase = 'ScanCheckBackup'; DisplayName = 'Test BIOS Version (Dell)';              ScriptPath = 'Scripts\ConfigurationChecks\Test-BiosVersion.ps1';               Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 15; Phase = 'ScanCheckBackup'; DisplayName = 'Test Driver Status (Dell DCU)';         ScriptPath = 'Scripts\ConfigurationChecks\Test-DriverStatus.ps1';              Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 16; Phase = 'ScanCheckBackup'; DisplayName = 'Test Wake-on-LAN Settings';             ScriptPath = 'Scripts\ConfigurationChecks\Test-WakeOnLan.ps1';                Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 17; Phase = 'ScanCheckBackup'; DisplayName = 'Test Windows Recovery (WinRE)';         ScriptPath = 'Scripts\ConfigurationChecks\Test-WinRE.ps1';                     Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 18; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Browser Bookmarks';              ScriptPath = 'Scripts\ConfigurationChanges\Backup-BrowserBookmarks.ps1';       Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 19; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Desktop Background';             ScriptPath = 'Scripts\ConfigurationChanges\Backup-DesktopBackground.ps1';     Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 20; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Outlook Signatures';             ScriptPath = 'Scripts\ConfigurationChanges\Backup-OutlookSignatures.ps1';     Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 21; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Taskbar Layout';                 ScriptPath = 'Scripts\ConfigurationChanges\Backup-TaskbarLayout.ps1';         Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 22; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Wi-Fi Profiles';                 ScriptPath = 'Scripts\ConfigurationChanges\Backup-WiFiProfiles.ps1';          Status = 'not-run'; IsWorkflow = $false }
 
     # ── Configure (changes settings) ──────────────────────────────────────
-    [PSCustomObject]@{
-        Index       = 20
-        Phase       = 'Configure'
-        DisplayName = 'Escrow BitLocker Key to Entra ID'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Test-BitLockerEscrow.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 21
-        Phase       = 'Configure'
-        DisplayName = 'Set Wake-on-LAN (BIOS + NIC + Windows)'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Set-WakeOnLan.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
+    [PSCustomObject]@{ Index = 23; Phase = 'Configure';     DisplayName = 'Escrow BitLocker Key to Entra ID';        ScriptPath = 'Scripts\ConfigurationChanges\Test-BitLockerEscrow.ps1';        Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 24; Phase = 'Configure';     DisplayName = 'Set Wake-on-LAN (BIOS + NIC + Windows)';  ScriptPath = 'Scripts\ConfigurationChanges\Set-WakeOnLan.ps1';              Status = 'not-run'; IsWorkflow = $false }
 
     # ── Install & Update ──────────────────────────────────────────────────
-    [PSCustomObject]@{
-        Index       = 22
-        Phase       = 'InstallUpdate'
-        DisplayName = 'Install Dell Command Tools (DCU + DCC)'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Install-DellCommandTools.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 23
-        Phase       = 'InstallUpdate'
-        DisplayName = 'Update Drivers (Dell DCU)'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Update-Drivers.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 24
-        Phase       = 'InstallUpdate'
-        DisplayName = 'Update BIOS (Dell DCU — may reboot)'
-        ScriptPath  = 'Scripts\ConfigurationChanges\Update-Bios.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
+    [PSCustomObject]@{ Index = 25; Phase = 'InstallUpdate'; DisplayName = 'Install Dell Command Tools (DCU + DCC)';  ScriptPath = 'Scripts\ConfigurationChanges\Install-DellCommandTools.ps1';   Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 26; Phase = 'InstallUpdate'; DisplayName = 'Update Drivers (Dell DCU)';               ScriptPath = 'Scripts\ConfigurationChanges\Update-Drivers.ps1';             Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 27; Phase = 'InstallUpdate'; DisplayName = 'Update BIOS (Dell DCU — may reboot)';     ScriptPath = 'Scripts\ConfigurationChanges\Update-Bios.ps1';                Status = 'not-run'; IsWorkflow = $false }
 
     # ── Autopilot ─────────────────────────────────────────────────────────
-    [PSCustomObject]@{
-        Index       = 25
-        Phase       = 'Autopilot'
-        DisplayName = 'Test Autopilot Profile'
-        ScriptPath  = 'Scripts\AutopilotReadiness\Test-AutopilotProfile.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 26
-        Phase       = 'Autopilot'
-        DisplayName = 'Test Autopilot Readiness'
-        ScriptPath  = 'Scripts\AutopilotReadiness\Test-AutopilotReadiness.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 27
-        Phase       = 'Autopilot'
-        DisplayName = 'Get Autopilot Assignment (Graph API)'
-        ScriptPath  = 'Scripts\AutopilotReadiness\Get-AutopilotAssignment.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 28
-        Phase       = 'Autopilot'
-        DisplayName = 'Register Device with Autopilot'
-        ScriptPath  = 'Scripts\AutopilotReadiness\Register-AutopilotDevice.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
-    [PSCustomObject]@{
-        Index       = 29
-        Phase       = 'Autopilot'
-        DisplayName = 'Pre-Wipe Summary'
-        ScriptPath  = 'Scripts\AutopilotReadiness\Get-PreWipeSummary.ps1'
-        Status      = 'not-run'
-        IsWorkflow  = $false
-    }
+    [PSCustomObject]@{ Index = 28; Phase = 'Autopilot';     DisplayName = 'Test Autopilot Readiness';                ScriptPath = 'Scripts\AutopilotReadiness\Test-AutopilotReadiness.ps1';      Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 29; Phase = 'Autopilot';     DisplayName = 'Get Autopilot Assignment';                ScriptPath = 'Scripts\AutopilotReadiness\Get-AutopilotAssignment.ps1';      Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 30; Phase = 'Autopilot';     DisplayName = 'Register Device with Autopilot';          ScriptPath = 'Scripts\AutopilotReadiness\Register-AutopilotDevice.ps1';    Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{ Index = 31; Phase = 'Autopilot';     DisplayName = 'Pre-Wipe Summary';                        ScriptPath = 'Scripts\AutopilotReadiness\Get-PreWipeSummary.ps1';          Status = 'not-run'; IsWorkflow = $false }
 )
 
 # Workflow items — appear at the bottom of the menu, no status badge
@@ -604,11 +403,11 @@ function Invoke-Step {
 
     if ($exitCode -eq 0) {
         $Step.Status = 'DONE'
-        Write-Host '  [PASS] Completed successfully.' -ForegroundColor Green
+        Write-Host '  [DONE] Completed.' -ForegroundColor White
     }
     else {
         $Step.Status = 'FAIL'
-        Write-Host "  [FAIL] Exited with code: $exitCode" -ForegroundColor Red
+        Write-Host "  [FAIL] Exited with code $exitCode — review output above." -ForegroundColor Red
     }
 
     Update-SessionStep -Index $Step.Index -Status $Step.Status -ExitCode $exitCode
@@ -629,7 +428,7 @@ function Invoke-RunAll {
     Clear-Host
     Write-CyanBox -Lines @(
         'Run All Steps'
-        'Runs all 29 steps in order.'
+        'Runs all 31 steps in order.'
         'Scripts run interactively. Respond to prompts as each script runs.'
         'Progress is saved after each step.'
     )
@@ -652,7 +451,7 @@ function Invoke-RunAll {
 
     Write-CyanBox -Lines @(
         'Run All Complete'
-        ("Passed  : {0}" -f $counts.DONE)
+        ("Done    :{0}" -f $counts.DONE)
         ("Failed  : {0}" -f $counts.FAIL)
         ("Skipped : {0}" -f $counts.SKIP)
     )
@@ -688,7 +487,7 @@ function Show-SessionSummary {
     $skip  = ($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
     $norun = ($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
     $lines += ''
-    $lines += ("Passed  : {0}" -f $done)
+    $lines += ("Done    : {0}" -f $done)
     $lines += ("Failed  : {0}" -f $fail)
     $lines += ("Skipped : {0}" -f $skip)
     $lines += ("Not Run : {0}" -f $norun)
@@ -750,7 +549,7 @@ function Export-SessionReport {
         $skip  = ($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
         $norun = ($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
         $lines.Add('--- Summary ---')
-        $lines.Add("  Passed  : $done")
+        $lines.Add("  Done    :$done")
         $lines.Add("  Failed  : $fail")
         $lines.Add("  Skipped : $skip")
         $lines.Add("  Not Run : $norun")

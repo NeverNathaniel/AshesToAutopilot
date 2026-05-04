@@ -339,3 +339,5 @@ if ($NonInteractive) {
     Write-Host ""
 }
 #endregion
+
+if ($OverallStatus -eq 'NOT READY') { exit 1 }
