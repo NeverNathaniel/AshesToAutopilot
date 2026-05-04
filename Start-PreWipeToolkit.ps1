@@ -3,23 +3,25 @@
     Interactive orchestrator for the Pre-Wipe Toolkit.
 
 .DESCRIPTION
-    Menu-driven workflow that guides a tech through all 31 pre-wipe preparation
-    steps across four categories: Scan/Check/Backup, Configure,
+    Retro-styled dashboard TUI that guides a tech through all 29 pre-wipe
+    preparation steps across four categories: Scan/Check/Backup, Configure,
     Install & Update, and Autopilot.
 
     Features:
-    - Arrow-key menu navigation via PSMenu module
+    - Custom ANSI dashboard with rainbow gradient banner (no external modules)
+    - Arrow-key menu navigation with scrolling and status badges
+    - Split-pane layout: step list (left) + session status / last result (right)
     - Session state persistence to C:\PreWipeOutput\session.json
     - Resume on reopen if session.json exists
     - Per-step status tracking (DONE / FAIL / SKIP / not-run)
-    - Run All, Summary, Export, and Reset workflow actions
+    - Run All, Export, and Reset workflow actions
 
 .PARAMETER NonInteractive
     Suppresses all interactive prompts and menu display. Emits current session
     state as a JSON object to stdout, then exits with code 0.
 
 .NOTES
-    Requirements  : PSMenu module (Install-Module PSMenu), Administrator privileges
+    Requirements  : Windows PowerShell 5.1+ or PowerShell 7+, Administrator privileges
     Output dir    : C:\PreWipeOutput\
     Log dir       : C:\PreWipeOutput\Logs\
     Does NOT modify any script in .\Scripts\ — calls them by path only.
@@ -28,7 +30,7 @@
 .EXAMPLE
     .\Start-PreWipeToolkit.ps1
 
-    Launches the interactive Pre-Wipe Toolkit menu.
+    Launches the interactive Pre-Wipe Toolkit dashboard.
 
 .EXAMPLE
     .\Start-PreWipeToolkit.ps1 -NonInteractive
@@ -54,7 +56,6 @@ if (-not $_principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administr
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS, OUTPUT DIRECTORY & LOGGING
-# (defined before PSMenu check so Write-ErrorLog is available everywhere)
 # ─────────────────────────────────────────────────────────────────────────────
 $ScriptName  = 'Start-PreWipeToolkit'
 $OutputRoot  = 'C:\PreWipeOutput'
@@ -91,39 +92,42 @@ function Write-ErrorLog {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PSMODULE: PSMenu  (skipped in -NonInteractive mode)
+# CUSTOM TUI: ANSI HELPERS & RAINBOW ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
-if (-not $NonInteractive) {
-    if (-not (Get-Module -ListAvailable -Name PSMenu)) {
-        Write-Host ''
-        Write-Host '  PSMenu module is not installed.' -ForegroundColor Yellow
-        Write-Host '  This toolkit requires PSMenu for interactive arrow-key menus.' -ForegroundColor Yellow
-        Write-Host ''
-        $answer = Read-Host '  Install PSMenu now from PSGallery? (Y/N)'
-        if ($answer -notmatch '^[Yy]') {
-            Write-Host '  PSMenu is required. Exiting.' -ForegroundColor Red
-            exit 1
-        }
-        try {
-            Write-Host '  Installing PSMenu...' -ForegroundColor Cyan
-            Install-Module -Name PSMenu -Scope AllUsers -Force -ErrorAction Stop
-            Write-Host '  PSMenu installed successfully.' -ForegroundColor Green
-            Write-Host ''
-        }
-        catch {
-            Write-ErrorLog "PSMenu install failed: $_"
-            Write-Host '  Run manually: Install-Module PSMenu -Scope AllUsers' -ForegroundColor Yellow
-            exit 1
-        }
-    }
+$esc = [char]27
 
-    try {
-        Import-Module PSMenu -ErrorAction Stop
+function Get-RainbowColor {
+    param([int]$Index, [int]$Total)
+    $pos = if ($Total -le 1) { 0 } else { $Index / ($Total - 1) }
+    $h = $pos * 280 # 0=Red, 60=Yellow, 120=Green, 180=Cyan, 240=Blue, 280=Purple
+    $c = 1.0; $x = $c * (1 - [Math]::Abs(($h / 60) % 2 - 1)); $m = 0.0
+    $r=0; $g=0; $b=0
+    if ($h -lt 60) { $r=$c; $g=$x; $b=0 }
+    elseif ($h -lt 120) { $r=$x; $g=$c; $b=0 }
+    elseif ($h -lt 180) { $r=0; $g=$c; $b=$x }
+    elseif ($h -lt 240) { $r=0; $g=$x; $b=$c }
+    else { $r=$x; $g=0; $b=$c }
+    $R = [int](($r+$m)*255); $G = [int](($g+$m)*255); $B = [int](($b+$m)*255)
+    return "$esc[38;2;$R;$G;$B`m"
+}
+
+function Write-RainbowBanner {
+    $banner = @(
+        "    ___       __             ______         ___        __             _ __     __ "
+        "   / _ |_____/ /  ___ ___   /_  __/__      / _ |__ __ / /____  ___   (_) /__  / / "
+        "  / __ /___/ _ \ / -_|_-<    / / / _ \    / __ / // // __/ _ \/ _ \ / / / _ \/ /  "
+        " /_/ |_\   /_//_/\__/___/   /_/  \___/   /_/ |_\_,_(_)__/\___/ .__//_/_/\___/_/   "
+        "                                                            /_/                   "
+    )
+    $width = $banner[0].Length
+    foreach ($line in $banner) {
+        $outStr = ""
+        for ($i = 0; $i -lt $line.Length; $i++) {
+            $outStr += "$(Get-RainbowColor -Index $i -Total $width)$($line[$i])"
+        }
+        Write-Host "$outStr$esc[0m"
     }
-    catch {
-        Write-ErrorLog "PSMenu import failed: $_"
-        exit 1
-    }
+    Write-Host ""
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -159,48 +163,249 @@ function Get-PhaseLabel([string]$Phase) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP DEFINITIONS  (31 steps — ordered by impact level)
+# STEP DEFINITIONS  (29 steps — ordered by impact level)
 # ScriptPath is relative to $PSScriptRoot
 # ─────────────────────────────────────────────────────────────────────────────
 $script:Steps = @(
     # ── Scan, Check & Backup (low impact — read-only or backup only) ───────
-    [PSCustomObject]@{ Index =  1; Phase = 'ScanCheckBackup'; DisplayName = 'Scan for Unbacked Data & Non-Std Apps'; ScriptPath = 'Scripts\DataCollection\Find-UnbackedData.ps1';                   Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index =  2; Phase = 'ScanCheckBackup'; DisplayName = 'Check Downloads Folder Sizes';          ScriptPath = 'Scripts\DataCollection\Get-DownloadsSize.ps1';                   Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index =  3; Phase = 'ScanCheckBackup'; DisplayName = 'Get Drive Mappings';                    ScriptPath = 'Scripts\DataCollection\Get-DriveMappings.ps1';                   Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index =  4; Phase = 'ScanCheckBackup'; DisplayName = 'List Printers';                         ScriptPath = 'Scripts\DataCollection\Get-Printers.ps1';                        Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index =  5; Phase = 'ScanCheckBackup'; DisplayName = 'Get Windows Product Key';               ScriptPath = 'Scripts\DataCollection\Get-WindowsProductKey.ps1';               Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index =  6; Phase = 'ScanCheckBackup'; DisplayName = 'Get Installed Applications';            ScriptPath = 'Scripts\DataCollection\Get-InstalledApplications.ps1';           Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index =  7; Phase = 'ScanCheckBackup'; DisplayName = 'Get Device Health Report';              ScriptPath = 'Scripts\DataCollection\Get-DeviceHealth.ps1';                    Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index =  8; Phase = 'ScanCheckBackup'; DisplayName = 'Get Teams Chat & Meeting Data';         ScriptPath = 'Scripts\DataCollection\Get-TeamsData.ps1';                       Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index =  9; Phase = 'ScanCheckBackup'; DisplayName = 'Get Credential Manager Entries';        ScriptPath = 'Scripts\DataCollection\Get-CredentialManagerEntries.ps1';        Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 10; Phase = 'ScanCheckBackup'; DisplayName = 'Get Local Accounts';                    ScriptPath = 'Scripts\DataCollection\Get-LocalAccounts.ps1';                   Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 11; Phase = 'ScanCheckBackup'; DisplayName = 'Test OneDrive KFM Status';              ScriptPath = 'Scripts\ConfigurationChecks\Test-OneDriveKFM.ps1';               Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 12; Phase = 'ScanCheckBackup'; DisplayName = 'Test OneDrive Sync Status';             ScriptPath = 'Scripts\ConfigurationChecks\Test-OneDriveSyncStatus.ps1';        Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 13; Phase = 'ScanCheckBackup'; DisplayName = 'Get Storage Controller Mode';           ScriptPath = 'Scripts\ConfigurationChecks\Get-StorageMode.ps1';                Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 14; Phase = 'ScanCheckBackup'; DisplayName = 'Test BIOS Version (Dell)';              ScriptPath = 'Scripts\ConfigurationChecks\Test-BiosVersion.ps1';               Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 15; Phase = 'ScanCheckBackup'; DisplayName = 'Test Driver Status (Dell DCU)';         ScriptPath = 'Scripts\ConfigurationChecks\Test-DriverStatus.ps1';              Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 16; Phase = 'ScanCheckBackup'; DisplayName = 'Test Wake-on-LAN Settings';             ScriptPath = 'Scripts\ConfigurationChecks\Test-WakeOnLan.ps1';                Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 17; Phase = 'ScanCheckBackup'; DisplayName = 'Test Windows Recovery (WinRE)';         ScriptPath = 'Scripts\ConfigurationChecks\Test-WinRE.ps1';                     Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 18; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Browser Bookmarks';              ScriptPath = 'Scripts\ConfigurationChanges\Backup-BrowserBookmarks.ps1';       Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 19; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Desktop Background';             ScriptPath = 'Scripts\ConfigurationChanges\Backup-DesktopBackground.ps1';     Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 20; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Outlook Signatures';             ScriptPath = 'Scripts\ConfigurationChanges\Backup-OutlookSignatures.ps1';     Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 21; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Taskbar Layout';                 ScriptPath = 'Scripts\ConfigurationChanges\Backup-TaskbarLayout.ps1';         Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 22; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Wi-Fi Profiles';                 ScriptPath = 'Scripts\ConfigurationChanges\Backup-WiFiProfiles.ps1';          Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{
+        Index       = 1
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Scan for Unbacked Data & Non-Std Apps'
+        ScriptPath  = 'Scripts\DataCollection\Find-UnbackedData.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 2
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Check Downloads Folder Sizes'
+        ScriptPath  = 'Scripts\DataCollection\Get-DownloadsSize.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 3
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Get Drive Mappings'
+        ScriptPath  = 'Scripts\DataCollection\Get-DriveMappings.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 4
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'List Physical Printers'
+        ScriptPath  = 'Scripts\DataCollection\Get-Printers.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 5
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Get Windows Product Key'
+        ScriptPath  = 'Scripts\DataCollection\Get-WindowsProductKey.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 6
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Get Installed Applications'
+        ScriptPath  = 'Scripts\DataCollection\Get-InstalledApplications.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 7
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Get Device Health Report'
+        ScriptPath  = 'Scripts\DataCollection\Get-DeviceHealth.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 8
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Test OneDrive KFM Status'
+        ScriptPath  = 'Scripts\ConfigurationChecks\Test-OneDriveKFM.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 9
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Test OneDrive Sync Status'
+        ScriptPath  = 'Scripts\ConfigurationChecks\Test-OneDriveSyncStatus.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 10
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Get Storage Controller Mode'
+        ScriptPath  = 'Scripts\ConfigurationChecks\Get-StorageMode.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 11
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Test BIOS Version (Dell)'
+        ScriptPath  = 'Scripts\ConfigurationChecks\Test-BiosVersion.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 12
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Test Driver Status (Dell DCU)'
+        ScriptPath  = 'Scripts\ConfigurationChecks\Test-DriverStatus.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 13
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Test Wake-on-LAN Settings'
+        ScriptPath  = 'Scripts\ConfigurationChecks\Test-WakeOnLan.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 14
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Test Windows Recovery (WinRE)'
+        ScriptPath  = 'Scripts\ConfigurationChecks\Test-WinRE.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 15
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Browser Bookmarks'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-BrowserBookmarks.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 16
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Desktop Background'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-DesktopBackground.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 17
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Outlook Signatures'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-OutlookSignatures.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 18
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Taskbar Layout'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-TaskbarLayout.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 19
+        Phase       = 'ScanCheckBackup'
+        DisplayName = 'Backup Wi-Fi Profiles'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Backup-WiFiProfiles.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
 
     # ── Configure (changes settings) ──────────────────────────────────────
-    [PSCustomObject]@{ Index = 23; Phase = 'Configure';     DisplayName = 'Escrow BitLocker Key to Entra ID';        ScriptPath = 'Scripts\ConfigurationChanges\Test-BitLockerEscrow.ps1';        Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 24; Phase = 'Configure';     DisplayName = 'Set Wake-on-LAN (BIOS + NIC + Windows)';  ScriptPath = 'Scripts\ConfigurationChanges\Set-WakeOnLan.ps1';              Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{
+        Index       = 20
+        Phase       = 'Configure'
+        DisplayName = 'Escrow BitLocker Key to Entra ID'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Test-BitLockerEscrow.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 21
+        Phase       = 'Configure'
+        DisplayName = 'Set Wake-on-LAN (BIOS + NIC + Windows)'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Set-WakeOnLan.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
 
     # ── Install & Update ──────────────────────────────────────────────────
-    [PSCustomObject]@{ Index = 25; Phase = 'InstallUpdate'; DisplayName = 'Install Dell Command Tools (DCU + DCC)';  ScriptPath = 'Scripts\ConfigurationChanges\Install-DellCommandTools.ps1';   Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 26; Phase = 'InstallUpdate'; DisplayName = 'Update Drivers (Dell DCU)';               ScriptPath = 'Scripts\ConfigurationChanges\Update-Drivers.ps1';             Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 27; Phase = 'InstallUpdate'; DisplayName = 'Update BIOS (Dell DCU — may reboot)';     ScriptPath = 'Scripts\ConfigurationChanges\Update-Bios.ps1';                Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{
+        Index       = 22
+        Phase       = 'InstallUpdate'
+        DisplayName = 'Install Dell Command Tools (DCU + DCC)'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Install-DellCommandTools.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 23
+        Phase       = 'InstallUpdate'
+        DisplayName = 'Update Drivers (Dell DCU)'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Update-Drivers.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 24
+        Phase       = 'InstallUpdate'
+        DisplayName = 'Update BIOS (Dell DCU — may reboot)'
+        ScriptPath  = 'Scripts\ConfigurationChanges\Update-Bios.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
 
     # ── Autopilot ─────────────────────────────────────────────────────────
-    [PSCustomObject]@{ Index = 28; Phase = 'Autopilot';     DisplayName = 'Test Autopilot Readiness';                ScriptPath = 'Scripts\AutopilotReadiness\Test-AutopilotReadiness.ps1';      Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 29; Phase = 'Autopilot';     DisplayName = 'Get Autopilot Assignment';                ScriptPath = 'Scripts\AutopilotReadiness\Get-AutopilotAssignment.ps1';      Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 30; Phase = 'Autopilot';     DisplayName = 'Register Device with Autopilot';          ScriptPath = 'Scripts\AutopilotReadiness\Register-AutopilotDevice.ps1';    Status = 'not-run'; IsWorkflow = $false }
-    [PSCustomObject]@{ Index = 31; Phase = 'Autopilot';     DisplayName = 'Pre-Wipe Summary';                        ScriptPath = 'Scripts\AutopilotReadiness\Get-PreWipeSummary.ps1';          Status = 'not-run'; IsWorkflow = $false }
+    [PSCustomObject]@{
+        Index       = 25
+        Phase       = 'Autopilot'
+        DisplayName = 'Test Autopilot Profile'
+        ScriptPath  = 'Scripts\AutopilotReadiness\Test-AutopilotProfile.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 26
+        Phase       = 'Autopilot'
+        DisplayName = 'Test Autopilot Readiness'
+        ScriptPath  = 'Scripts\AutopilotReadiness\Test-AutopilotReadiness.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 27
+        Phase       = 'Autopilot'
+        DisplayName = 'Get Autopilot Assignment (Graph API)'
+        ScriptPath  = 'Scripts\AutopilotReadiness\Get-AutopilotAssignment.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 28
+        Phase       = 'Autopilot'
+        DisplayName = 'Register Device with Autopilot'
+        ScriptPath  = 'Scripts\AutopilotReadiness\Register-AutopilotDevice.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
+    [PSCustomObject]@{
+        Index       = 29
+        Phase       = 'Autopilot'
+        DisplayName = 'Pre-Wipe Summary'
+        ScriptPath  = 'Scripts\AutopilotReadiness\Get-PreWipeSummary.ps1'
+        Status      = 'not-run'
+        IsWorkflow  = $false
+    }
 )
 
 # Workflow items — appear at the bottom of the menu, no status badge
@@ -285,71 +490,131 @@ function Update-SessionStep {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DISPLAY HELPERS
-# Uses PSMenu's native Show-Menu — no custom menu renderer.
+# CUSTOM DASHBOARD ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 
-function Write-CyanBox {
-    param(
-        [string[]]$Lines,
-        [int]$MinWidth = 58
-    )
+$script:LastActionResult = 'Welcome to the Pre-Wipe Toolkit. Select an action to begin.'
+$script:MenuItems = @()
 
-    if (-not $Lines -or $Lines.Count -eq 0) {
-        $Lines = @('')
-    }
-
-    $normalized = @($Lines | ForEach-Object {
-        if ($null -eq $_) { '' } else { [string]$_ }
-    })
-
-    $maxLength = ($normalized | Measure-Object -Property Length -Maximum).Maximum
-    if ($null -eq $maxLength) { $maxLength = 0 }
-
-    $innerWidth = [Math]::Max($maxLength, $MinWidth)
-    $bar = '═' * ($innerWidth + 2)
-
-    Write-Host ''
-    Write-Host "╔$bar╗" -ForegroundColor Cyan
-    foreach ($line in $normalized) {
-        Write-Host ("║ {0} ║" -f $line.PadRight($innerWidth)) -ForegroundColor Cyan
-    }
-    Write-Host "╚$bar╝" -ForegroundColor Cyan
-    Write-Host ''
+function Build-MenuItems {
+    $items = @()
+    $items += [PSCustomObject]@{ IsHeader=$true; DisplayName=" SCAN, CHECK & BACKUP" }
+    foreach ($s in ($script:Steps | Where-Object Phase -eq 'ScanCheckBackup')) { $items += $s }
+    
+    $items += [PSCustomObject]@{ IsHeader=$true; DisplayName=" CONFIGURE" }
+    foreach ($s in ($script:Steps | Where-Object Phase -eq 'Configure')) { $items += $s }
+    
+    $items += [PSCustomObject]@{ IsHeader=$true; DisplayName=" INSTALL & UPDATE" }
+    foreach ($s in ($script:Steps | Where-Object Phase -eq 'InstallUpdate')) { $items += $s }
+    
+    $items += [PSCustomObject]@{ IsHeader=$true; DisplayName=" AUTOPILOT" }
+    foreach ($s in ($script:Steps | Where-Object Phase -eq 'Autopilot')) { $items += $s }
+    
+    $items += [PSCustomObject]@{ IsHeader=$true; DisplayName=" WORKFLOW ACTIONS" }
+    foreach ($w in $script:WorkflowItems) { $items += $w }
+    
+    return $items
 }
 
-function Show-Header {
+function Draw-Dashboard {
+    param([int]$SelectedIndex, [int]$ScrollTop)
+    
+    # Hide cursor, move home, clear screen below
+    Write-Host -NoNewline "$esc[?25l$esc[H$esc[2J"
+    
+    Write-RainbowBanner
+    
+    $totalSteps = $script:Steps.Count
     $done  = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
     $fail  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count
-    $total = $script:Steps.Count
+    $skip  = @($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
+    $norun = @($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
 
-    Write-Host ''
-    Write-Host '  Pre-Wipe Toolkit · AshesToAutopilot' -ForegroundColor White
-    Write-Host "  $($script:ComputerName) · SN: $($script:SerialNumber) · $($script:CurrentUser)" -ForegroundColor DarkGray
+    $viewHeight = 18
+    $leftWidth = 60
+    $rightWidth = 50
+    
+    $menuLines = @()
+    for ($i = $ScrollTop; $i -lt [Math]::Min($script:MenuItems.Count, $ScrollTop + $viewHeight); $i++) {
+        $item = $script:MenuItems[$i]
+        $prefix = if ($i -eq $SelectedIndex) { " $esc[32m>>$esc[0m " } else { "    " }
+        
+        if ($item.IsHeader) {
+            $line = "$prefix$esc[36m$($item.DisplayName)$esc[0m"
+            $plain = "    $($item.DisplayName)"
+            $menuLines += $line + (" " * [Math]::Max(0, $leftWidth - $plain.Length))
+        }
+        elseif ($item.IsWorkflow) {
+            $line = "$prefix$esc[37m$($item.DisplayName)$esc[0m"
+            $plain = "    $($item.DisplayName)"
+            $menuLines += $line + (" " * [Math]::Max(0, $leftWidth - $plain.Length))
+        }
+        else {
+            $badgeColor = switch ($item.Status) {
+                'DONE' { "$esc[32m[DONE]$esc[0m" }
+                'FAIL' { "$esc[31m[FAIL]$esc[0m" }
+                'SKIP' { "$esc[33m[SKIP]$esc[0m" }
+                default { "$esc[90m[    ]$esc[0m" }
+            }
+            $line = "$prefix$badgeColor $($item.DisplayName)"
+            $plain = "    [XXXX] $($item.DisplayName)"
+            $menuLines += $line + (" " * [Math]::Max(0, $leftWidth - $plain.Length))
+        }
+    }
+    
+    while ($menuLines.Count -lt $viewHeight) { $menuLines += (" " * $leftWidth) }
 
-    # Progress bar
-    $barLen  = 24
-    $filled  = if ($total -gt 0) { [Math]::Floor(($done / $total) * $barLen) } else { 0 }
-    $empty   = $barLen - $filled
-    Write-Host -NoNewline '  '
-    if ($filled -gt 0) { Write-Host -NoNewline ([string]::new([char]0x2588, $filled)) -ForegroundColor Green }
-    if ($empty  -gt 0) { Write-Host -NoNewline ([string]::new([char]0x2591, $empty))  -ForegroundColor DarkGray }
-    $progText = "  $done/$total complete"
-    if ($fail -gt 0) { $progText += " · $fail failed" }
-    Write-Host $progText -ForegroundColor Gray
+    $rightLines = @()
+    $rightLines += "$esc[36m=== SESSION STATUS ===$esc[0m"
+    $rightLines += " Computer : $($script:ComputerName)"
+    $rightLines += " User     : $($script:CurrentUser)"
+    $rightLines += ""
+    
+    $barLen = 24
+    $filled = if ($totalSteps -gt 0) { [Math]::Floor(($done / $totalSteps) * $barLen) } else { 0 }
+    $empty  = $barLen - $filled
+    $barStr = "$esc[32m$([string]::new([char]0x2588, $filled))$esc[90m$([string]::new([char]0x2591, $empty))$esc[0m"
+    $rightLines += " Progress : $barStr"
+    $rightLines += " Passed   : $esc[32m$done$esc[0m    Failed : $esc[31m$fail$esc[0m"
+    $rightLines += " Skipped  : $esc[33m$skip$esc[0m    Not Run: $norun"
+    $rightLines += ""
+    
+    $rightLines += "$esc[36m=== SELECTION ===$esc[0m"
+    $selItem = $script:MenuItems[$SelectedIndex]
+    if ($selItem.IsHeader) {
+        $rightLines += " Category header."
+    } elseif ($selItem.IsWorkflow) {
+        $rightLines += " Action: $($selItem.DisplayName)"
+    } else {
+        $rightLines += " Step   : $($selItem.Index)"
+        $rightLines += " Name   : $($selItem.DisplayName)"
+        $rightLines += " Status : $($selItem.Status)"
+        $rightLines += " Script : $(Split-Path $selItem.ScriptPath -Leaf)"
+    }
+    
+    $rightLines += ""
+    $rightLines += "$esc[36m=== LAST RESULT ===$esc[0m"
+    
+    $words = $script:LastActionResult -split ' '
+    $curLine = " "
+    foreach ($w in $words) {
+        if (($curLine.Length + $w.Length) -gt 45) {
+            $rightLines += $curLine
+            $curLine = "  $w "
+        } else {
+            $curLine += "$w "
+        }
+    }
+    if ($curLine.Trim() -ne "") { $rightLines += $curLine }
 
-    Write-Host "  $('─' * 56)" -ForegroundColor DarkGray
-    Write-Host ''
-}
+    while ($rightLines.Count -lt $viewHeight) { $rightLines += "" }
 
-function Show-StepBanner {
-    param([PSCustomObject]$Step)
-    $phaseLabel = Get-PhaseLabel $Step.Phase
-    Write-CyanBox -Lines @(
-        $Step.DisplayName
-        ("Category : {0}" -f $phaseLabel)
-        ("Script   : {0}" -f $Step.ScriptPath)
-    )
+    for ($i = 0; $i -lt $viewHeight; $i++) {
+        Write-Host "$($menuLines[$i]) $esc[90m|$esc[0m $($rightLines[$i])"
+    }
+
+    Write-Host "$esc[90m$([string]::new('-', $leftWidth + $rightWidth + 3))$esc[0m"
+    Write-Host "  [↑/↓] Navigate    [ENTER] Execute    [ESC] Exit" -ForegroundColor DarkGray
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -359,31 +624,25 @@ function Show-StepBanner {
 function Invoke-Step {
     param(
         [PSCustomObject]$Step,
-        [switch]$InRunAll   # suppresses "press any key" pause when called from Run All
+        [switch]$InRunAll
     )
 
-    Clear-Host
-    Show-StepBanner -Step $Step
+    # Move cursor down to not overwrite the banner completely, but show we are running
+    Write-Host -NoNewline "$esc[?25h$esc[2J$esc[H"
+    Write-RainbowBanner
+    Write-Host "  >>> Running: $($Step.DisplayName) <<<" -ForegroundColor Cyan
+    Write-Host ""
 
     $fullPath = Join-Path $PSScriptRoot $Step.ScriptPath
 
     if (-not (Test-Path $fullPath)) {
-        Write-Host "  [SKIP] Script not found: $($Step.ScriptPath)" -ForegroundColor Yellow
         $Step.Status = 'SKIP'
         Update-SessionStep -Index $Step.Index -Status 'SKIP' -ExitCode $null
         Save-Session
-        if (-not $InRunAll) {
-            Write-Host ''
-            Write-Host '  Press any key to return to menu...' -ForegroundColor DarkGray
-            $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-        }
+        $script:LastActionResult = "[SKIP] Script not found: $($Step.ScriptPath)"
         return
     }
 
-    Write-Host "  $('─' * 58)" -ForegroundColor DarkGray
-    Write-Host ''
-
-    # Reset before call so we capture this script's exit code, not a stale one
     $LASTEXITCODE = 0
     $exitCode = 0
 
@@ -392,31 +651,26 @@ function Invoke-Step {
         $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     }
     catch {
-        Write-Host ''
-        Write-Host "  [FAIL] Unhandled error: $_" -ForegroundColor Red
         Write-ErrorLog "Step $($Step.Index) ($($Step.DisplayName)) threw: $_"
         $exitCode = -1
     }
 
-    Write-Host ''
-    Write-Host "  $('─' * 58)" -ForegroundColor DarkGray
-
     if ($exitCode -eq 0) {
         $Step.Status = 'DONE'
-        Write-Host '  [DONE] Completed.' -ForegroundColor White
+        $script:LastActionResult = "[PASS] $($Step.DisplayName) completed successfully."
     }
     else {
         $Step.Status = 'FAIL'
-        Write-Host "  [FAIL] Exited with code $exitCode — review output above." -ForegroundColor Red
+        $script:LastActionResult = "[FAIL] $($Step.DisplayName) exited with code: $exitCode"
     }
 
     Update-SessionStep -Index $Step.Index -Status $Step.Status -ExitCode $exitCode
     Save-Session
 
     if (-not $InRunAll) {
-        Write-Host ''
-        Write-Host '  Press any key to return to menu...' -ForegroundColor DarkGray
-        $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        Write-Host ""
+        Write-Host "  Finished. Returning to dashboard in 2 seconds..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds 2
     }
 }
 
@@ -425,16 +679,13 @@ function Invoke-Step {
 # ─────────────────────────────────────────────────────────────────────────────
 
 function Invoke-RunAll {
-    Clear-Host
-    Write-CyanBox -Lines @(
-        'Run All Steps'
-        'Runs all 31 steps in order.'
-        'Scripts run interactively. Respond to prompts as each script runs.'
-        'Progress is saved after each step.'
-    )
-
-    $confirm = Show-Menu -MenuItems @('Yes, run all steps', 'Cancel')
-    if ($confirm -ne 'Yes, run all steps') { return }
+    Write-Host -NoNewline "$esc[?25h$esc[2J$esc[H"
+    Write-Host "  Run All Steps" -ForegroundColor Cyan
+    Write-Host "  Runs all 29 steps in order. Respond to prompts as scripts run." -ForegroundColor Gray
+    Write-Host ""
+    
+    $confirm = Read-Host "  Type 'Y' to run all steps, or press Enter to cancel"
+    if ($confirm -notmatch '^[Yy]') { return }
 
     $counts = @{ DONE = 0; FAIL = 0; SKIP = 0 }
 
@@ -445,19 +696,12 @@ function Invoke-RunAll {
             'FAIL' { $counts.FAIL++ }
             'SKIP' { $counts.SKIP++ }
         }
-        # Brief pause so the tech sees the result line before next step clears screen
         Start-Sleep -Milliseconds 800
     }
 
-    Write-CyanBox -Lines @(
-        'Run All Complete'
-        ("Done    :{0}" -f $counts.DONE)
-        ("Failed  : {0}" -f $counts.FAIL)
-        ("Skipped : {0}" -f $counts.SKIP)
-    )
-
-    Write-Host 'Press any key to return to menu...' -ForegroundColor Cyan
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    $script:LastActionResult = "Run All Complete. Passed: $($counts.DONE), Failed: $($counts.FAIL), Skipped: $($counts.SKIP)."
+    Write-Host "  Run All Complete! Returning to dashboard..." -ForegroundColor Green
+    Start-Sleep -Seconds 2
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -465,36 +709,8 @@ function Invoke-RunAll {
 # ─────────────────────────────────────────────────────────────────────────────
 
 function Show-SessionSummary {
-    Clear-Host
-    $lines = @('Session Summary')
-
-    foreach ($group in ($script:Steps | Group-Object Phase)) {
-        $lines += ''
-        $lines += ("-- {0}" -f (Get-PhaseLabel $group.Name))
-        foreach ($step in $group.Group) {
-            $badge = switch ($step.Status) {
-                'DONE'    { '[DONE]' }
-                'FAIL'    { '[FAIL]' }
-                'SKIP'    { '[SKIP]' }
-                default   { '[    ]' }
-            }
-            $lines += ("  {0}  {1}" -f $badge, $step.DisplayName)
-        }
-    }
-
-    $done  = ($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
-    $fail  = ($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count
-    $skip  = ($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
-    $norun = ($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
-    $lines += ''
-    $lines += ("Done    : {0}" -f $done)
-    $lines += ("Failed  : {0}" -f $fail)
-    $lines += ("Skipped : {0}" -f $skip)
-    $lines += ("Not Run : {0}" -f $norun)
-
-    Write-CyanBox -Lines $lines
-    Write-Host 'Press any key to return to menu...' -ForegroundColor Cyan
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    # Dashboard displays this natively now, but we'll leave a status update
+    $script:LastActionResult = 'Session summary is displayed on the dashboard. Review the STATUS and Progress panes.'
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -502,27 +718,20 @@ function Show-SessionSummary {
 # ─────────────────────────────────────────────────────────────────────────────
 
 function Export-SessionReport {
-    Clear-Host
-    Write-Host ''
+    Write-Host -NoNewline "$esc[?25h$esc[2J$esc[H"
     Write-Host '  Exporting Session Report...' -ForegroundColor Cyan
-    Write-Host ''
-
+    
     $stamp    = Get-Date -Format 'yyyyMMdd-HHmmss'
     $baseName = "PreWipeReport_$($script:ComputerName)_$stamp"
     $jsonPath = Join-Path $OutputRoot "$baseName.json"
     $txtPath  = Join-Path $OutputRoot "$baseName.txt"
 
-    # JSON
+    # JSON export
     try {
         $script:Session | ConvertTo-Json -Depth 5 | Set-Content $jsonPath -Encoding UTF8 -Force
-        Write-Host "  JSON : $jsonPath" -ForegroundColor Green
-    }
-    catch {
-        Write-ErrorLog "JSON export failed: $_"
-        Write-Host "  JSON export failed: $_" -ForegroundColor Red
-    }
+    } catch { Write-ErrorLog "JSON export failed: $_" }
 
-    # Readable TXT
+    # Readable TXT export with full step detail
     try {
         $lines = [System.Collections.Generic.List[string]]::new()
         $lines.Add('Pre-Wipe Toolkit — Session Report')
@@ -538,7 +747,7 @@ function Export-SessionReport {
             $lines.Add("--- $(Get-PhaseLabel $group.Name) ---")
             foreach ($step in $group.Group) {
                 $stepData = $script:Session.Steps["$($step.Index)"]
-                $ts       = if ($stepData -and $stepData.Timestamp) { "  ($($stepData.Timestamp))" } else { '' }
+                $ts = if ($stepData -and $stepData.Timestamp) { "  ($($stepData.Timestamp))" } else { '' }
                 $lines.Add("  [$($step.Status.PadRight(7))] $($step.DisplayName)$ts")
             }
             $lines.Add('')
@@ -549,22 +758,15 @@ function Export-SessionReport {
         $skip  = ($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
         $norun = ($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
         $lines.Add('--- Summary ---')
-        $lines.Add("  Done    :$done")
+        $lines.Add("  Passed  : $done")
         $lines.Add("  Failed  : $fail")
         $lines.Add("  Skipped : $skip")
         $lines.Add("  Not Run : $norun")
 
         $lines | Set-Content $txtPath -Encoding UTF8 -Force
-        Write-Host "  TXT  : $txtPath" -ForegroundColor Green
-    }
-    catch {
-        Write-ErrorLog "TXT export failed: $_"
-        Write-Host "  TXT export failed: $_" -ForegroundColor Red
-    }
+    } catch { Write-ErrorLog "TXT export failed: $_" }
 
-    Write-Host ''
-    Write-Host '  Press any key to return to menu...' -ForegroundColor DarkGray
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    $script:LastActionResult = "Session exported to $OutputRoot successfully."
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -572,84 +774,18 @@ function Export-SessionReport {
 # ─────────────────────────────────────────────────────────────────────────────
 
 function Invoke-ResetSession {
-    Clear-Host
-    Write-Host ''
+    Write-Host -NoNewline "$esc[?25h$esc[2J$esc[H"
     Write-Host '  Reset Session' -ForegroundColor White
     Write-Host '  This clears all step statuses and deletes session.json.' -ForegroundColor Gray
-    Write-Host ''
-
-    $confirm = Show-Menu -MenuItems @('Yes, reset session', 'Cancel')
-    if ($confirm -ne 'Yes, reset session') { return }
+    
+    $confirm = Read-Host "  Type 'Y' to reset session, or press Enter to cancel"
+    if ($confirm -notmatch '^[Yy]') { return }
 
     foreach ($step in $script:Steps) { $step.Status = 'not-run' }
     $script:Session = Initialize-Session
     if (Test-Path $SessionFile) { Remove-Item $SessionFile -Force }
 
-    Write-Host ''
-    Write-Host '  Session reset. All steps marked as not-run.' -ForegroundColor Green
-    Start-Sleep -Seconds 1
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MENU CONSTRUCTION
-# ─────────────────────────────────────────────────────────────────────────────
-
-function Get-MenuItems {
-    $items = [System.Collections.ArrayList]::new()
-
-    # Scan, Check & Backup — first group, no leading separator
-    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'ScanCheckBackup' })) {
-        $null = $items.Add($s)
-    }
-
-    # Configure
-    $null = $items.Add((Get-MenuSeparator))
-    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'Configure' })) {
-        $null = $items.Add($s)
-    }
-
-    # Install & Update
-    $null = $items.Add((Get-MenuSeparator))
-    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'InstallUpdate' })) {
-        $null = $items.Add($s)
-    }
-
-    # Autopilot
-    $null = $items.Add((Get-MenuSeparator))
-    foreach ($s in ($script:Steps | Where-Object { $_.Phase -eq 'Autopilot' })) {
-        $null = $items.Add($s)
-    }
-
-    # Workflow actions
-    $null = $items.Add((Get-MenuSeparator))
-    foreach ($w in $script:WorkflowItems) {
-        $null = $items.Add($w)
-    }
-
-    return $items.ToArray()
-}
-
-# Menu item formatter — returns a string for PSMenu to display
-$script:Formatter = {
-    param($item)
-
-    if ($null -eq $item) { return '' }
-
-    # Defensive: only format our expected step/workflow objects
-    if (-not ($item -is [PSCustomObject])) { return $item.ToString() }
-    if (-not ($item.PSObject.Properties.Name -contains 'IsWorkflow')) { return $item.ToString() }
-
-    if ($item.IsWorkflow) {
-        return $item.DisplayName
-    }
-
-    $badge = switch ($item.Status) {
-        'DONE'  { '[DONE]' }
-        'FAIL'  { '[FAIL]' }
-        'SKIP'  { '[SKIP]' }
-        default { '[    ]' }
-    }
-    return "$badge  $($item.DisplayName)"
+    $script:LastActionResult = 'Session reset successfully. All steps marked as not-run.'
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -658,9 +794,6 @@ $script:Formatter = {
 
 $script:Session = Import-Session
 
-# ─────────────────────────────────────────────────────────────────────────────
-# NON-INTERACTIVE MODE — emit session JSON to stdout and exit
-# ─────────────────────────────────────────────────────────────────────────────
 if ($NonInteractive) {
     $result = [PSCustomObject]@{
         Timestamp    = (Get-Date -Format 'o')
@@ -683,39 +816,70 @@ if ($NonInteractive) {
     exit 0
 }
 
-Start-Sleep -Milliseconds 800   # let any resume message stay visible briefly
+Start-Sleep -Milliseconds 800
 
 try {
     $running = $true
+    $script:MenuItems = Build-MenuItems
+
+    # Start selection on first selectable item (skip header at index 0)
+    $selectedIndex = 1
+    $scrollTop = 0
+
     while ($running) {
-        Clear-Host
-        Show-Header
+        Draw-Dashboard -SelectedIndex $selectedIndex -ScrollTop $scrollTop
 
-        $menuItems = Get-MenuItems
-        $selected  = Show-Menu -MenuItems $menuItems -MenuItemFormatter $script:Formatter -ItemFocusColor Green
-
-        # Escape / closed menu
-        if ($null -eq $selected) { $running = $false; continue }
-
-        # Skip separators or unexpected types
-        if (-not ($selected -is [PSCustomObject])) { continue }
-        if (-not ($selected.PSObject.Properties.Name -contains 'IsWorkflow')) { continue }
-
-        if ($selected.IsWorkflow) {
-            switch ($selected.Action) {
-                'RunAll'  { Invoke-RunAll }
-                'Summary' { Show-SessionSummary }
-                'Export'  { Export-SessionReport }
-                'Reset'   { Invoke-ResetSession }
-                'Exit'    { $running = $false }
+        $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        if ($key.KeyDown) {
+            switch ($key.VirtualKeyCode) {
+                38 { # Up Arrow
+                    $prev = $selectedIndex
+                    $selectedIndex--
+                    if ($selectedIndex -lt 0) { $selectedIndex = 0 }
+                    # Skip headers; if stuck on one at top, revert
+                    while ($script:MenuItems[$selectedIndex].IsHeader -and $selectedIndex -gt 0) {
+                        $selectedIndex--
+                    }
+                    if ($script:MenuItems[$selectedIndex].IsHeader) { $selectedIndex = $prev }
+                    if ($selectedIndex -lt $scrollTop) { $scrollTop = $selectedIndex }
+                }
+                40 { # Down Arrow
+                    $prev = $selectedIndex
+                    $selectedIndex++
+                    if ($selectedIndex -ge $script:MenuItems.Count) { $selectedIndex = $script:MenuItems.Count - 1 }
+                    # Skip headers; if stuck on one at bottom, revert
+                    while ($script:MenuItems[$selectedIndex].IsHeader -and $selectedIndex -lt ($script:MenuItems.Count - 1)) {
+                        $selectedIndex++
+                    }
+                    if ($script:MenuItems[$selectedIndex].IsHeader) { $selectedIndex = $prev }
+                    if ($selectedIndex -ge ($scrollTop + 18)) { $scrollTop = $selectedIndex - 17 }
+                }
+                13 { # Enter
+                    $sel = $script:MenuItems[$selectedIndex]
+                    if ($sel.IsWorkflow) {
+                        switch ($sel.Action) {
+                            'RunAll'  { Invoke-RunAll }
+                            'Summary' { Show-SessionSummary }
+                            'Export'  { Export-SessionReport }
+                            'Reset'   { Invoke-ResetSession }
+                            'Exit'    { $running = $false }
+                        }
+                    } else {
+                        Invoke-Step -Step $sel
+                    }
+                }
+                27 { # Escape
+                    $running = $false
+                }
             }
         }
-        else {
-            Invoke-Step -Step $selected
-        }
     }
+    # Restore cursor on exit
+    Write-Host -NoNewline "$esc[?25h"
+    Clear-Host
 }
 catch {
+    Write-Host -NoNewline "$esc[?25h"
     Write-ErrorLog "Unhandled exception in main loop: $_"
     Write-Host "  FATAL: Unexpected error — check $ErrorLog" -ForegroundColor Red
     exit 1
