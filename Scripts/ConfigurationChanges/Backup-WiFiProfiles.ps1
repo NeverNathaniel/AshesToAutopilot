@@ -31,34 +31,13 @@ param(
 
 #region --- Init ---
 $ScriptName = 'Backup-WiFiProfiles'
-$OutputRoot = 'C:\PreWipeOutput'
-$LogDir     = "$OutputRoot\Logs"
-$LogFile    = "$LogDir\$ScriptName.log"
-$ErrorLog   = "$OutputRoot\errors.log"
-$WiFiDir    = "$OutputRoot\WiFiProfiles"
+. (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+$LogFile = "$LogDir\$ScriptName.log"
+if (-not (Test-AdminElevation)) { exit 1 }
 
-if (-not (Test-Path $OutputRoot)) { New-Item -Path $OutputRoot -ItemType Directory -Force | Out-Null }
-if (-not (Test-Path $LogDir))     { New-Item -Path $LogDir     -ItemType Directory -Force | Out-Null }
-if (-not (Test-Path $WiFiDir))    { New-Item -Path $WiFiDir    -ItemType Directory -Force | Out-Null }
-
-function Write-Log {
-    param([string]$Message, [string]$Level = 'INFO')
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [$Level] $Message" | Tee-Object -FilePath $LogFile -Append | Out-Null
-    if (-not $NonInteractive) { Write-Host "$ts [$Level] $Message" }
-}
-
-function Write-ErrorLog {
-    param([string]$Message)
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [ERROR] [$ScriptName] $Message" | Out-File -FilePath $ErrorLog -Append
-    Write-Log $Message 'ERROR'
-}
-
-# Admin check
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "ERROR: This script must be run as Administrator." -ForegroundColor Red
-    exit 1
+$WiFiDir = "$OutputRoot\WiFiProfiles"
+if (-not (Test-Path -LiteralPath $WiFiDir)) {
+    New-Item -ItemType Directory -Path $WiFiDir -Force | Out-Null
 }
 #endregion
 
@@ -105,6 +84,7 @@ foreach ($ssid in $profileNames) {
         Encryption     = $null
         KeyType        = $null
         Exported       = $false
+        ExportedPath   = $null
         NeedsReauth    = $false
         Error          = $null
     }
@@ -116,6 +96,7 @@ foreach ($ssid in $profileNames) {
 
         if ($exportedFile) {
             $profileInfo.Exported = $true
+            $profileInfo.ExportedPath = $exportedFile.FullName
             Write-Log "  Exported: $($exportedFile.Name)"
 
             # Parse XML for auth details
@@ -171,15 +152,26 @@ try {
 #endregion
 
 #region --- Output ---
+$ExportedCount   = ($ProfileResults | Where-Object { $_.Exported }).Count
+$PskProfiles     = @($ProfileResults | Where-Object { $_.Exported -and $_.KeyType -eq 'Pre-shared key' })
+$SensitiveFiles  = @($PskProfiles | Where-Object { $_.ExportedPath } | ForEach-Object { $_.ExportedPath })
+
+$SecurityWarning = $null
+if ($ExportedCount -gt 0 -and $PskProfiles.Count -gt 0) {
+    $SecurityWarning = "Exported WiFi profile XML files contain cleartext WPA/WPA2 PSK passwords. Delete C:\PreWipeOutput\WiFiProfiles\ after profiles are restored to the new device or move to a secure location."
+}
+
 $Result = [PSCustomObject]@{
     Timestamp       = (Get-Date -Format 'o')
     WlanService     = 'Running'
     ActiveSSID      = $ActiveSSID
     ProfileCount    = $ProfileResults.Count
-    ExportedCount   = ($ProfileResults | Where-Object { $_.Exported }).Count
+    ExportedCount   = $ExportedCount
     EnterpriseCount = ($ProfileResults | Where-Object { $_.NeedsReauth }).Count
     ExportPath      = $WiFiDir
     Profiles        = $ProfileResults
+    SecurityWarning = $SecurityWarning
+    SensitiveFiles  = $SensitiveFiles
 }
 
 $Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\WiFiProfiles-Report.json" -Force
@@ -190,7 +182,7 @@ if ($NonInteractive) {
     Write-Host ""
     Write-Host "=== WiFi Profiles Backup ===" -ForegroundColor Cyan
     Write-Host "Total profiles:      $($ProfileResults.Count)"
-    Write-Host "Exported:            $(($ProfileResults | Where-Object { $_.Exported }).Count)"
+    Write-Host "Exported:            $ExportedCount"
     Write-Host "Enterprise (no key): $(($ProfileResults | Where-Object { $_.NeedsReauth }).Count)"
     if ($ActiveSSID) { Write-Host "Currently connected:  $ActiveSSID" -ForegroundColor Green }
     Write-Host ""
@@ -200,6 +192,11 @@ if ($NonInteractive) {
         Write-Host "  $($p.SSID)$extra - $($p.Authentication)" -ForegroundColor $color
     }
     Write-Host ""
+    if ($SecurityWarning) {
+        Write-Host "WARNING: Exported XML files contain cleartext PSK passwords." -ForegroundColor Yellow
+        Write-Host "         Delete or move C:\PreWipeOutput\WiFiProfiles\ after profile restoration." -ForegroundColor Yellow
+        Write-Host ""
+    }
     Write-Host "Exported to: $WiFiDir"
     Write-Host "Report:      $LogDir\WiFiProfiles-Report.json"
     Write-Host ""

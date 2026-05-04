@@ -30,33 +30,9 @@ param(
 
 #region --- Init ---
 $ScriptName = 'Test-AutopilotReadiness'
-$OutputRoot = 'C:\PreWipeOutput'
-$LogDir     = "$OutputRoot\Logs"
-$LogFile    = "$LogDir\$ScriptName.log"
-$ErrorLog   = "$OutputRoot\errors.log"
-
-if (-not (Test-Path $OutputRoot)) { New-Item -Path $OutputRoot -ItemType Directory -Force | Out-Null }
-if (-not (Test-Path $LogDir))     { New-Item -Path $LogDir     -ItemType Directory -Force | Out-Null }
-
-function Write-Log {
-    param([string]$Message, [string]$Level = 'INFO')
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [$Level] $Message" | Tee-Object -FilePath $LogFile -Append | Out-Null
-    if (-not $NonInteractive) { Write-Host "$ts [$Level] $Message" }
-}
-
-function Write-ErrorLog {
-    param([string]$Message)
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [ERROR] [$ScriptName] $Message" | Out-File -FilePath $ErrorLog -Append
-    Write-Log $Message 'ERROR'
-}
-
-# Admin check
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "ERROR: This script must be run as Administrator." -ForegroundColor Red
-    exit 1
-}
+. (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+$LogFile = "$LogDir\$ScriptName.log"
+if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
 
 $Checks = @{}
@@ -70,11 +46,51 @@ try {
         $tpmWmi = Get-CimInstance -Namespace 'root\cimv2\Security\MicrosoftTpm' -ClassName Win32_Tpm -ErrorAction Stop
         $tpmVersion = $tpmWmi.SpecVersion
         $majorVersion = ($tpmVersion -split ',')[0].Trim() -as [int]
+
+        # Manufacturer flagging - record details and flag known-issue vendors
+        $manufacturerId        = $tpmWmi.ManufacturerId
+        $manufacturerVersion   = $tpmWmi.ManufacturerVersion
+        $manufacturerIdString  = $null
+        if ($tpmWmi.PSObject.Properties.Name -contains 'ManufacturerIdTxt') {
+            $manufacturerIdString = $tpmWmi.ManufacturerIdTxt
+        }
+        $manufacturerIdHex = $null
+        if ($null -ne $manufacturerId) {
+            $manufacturerIdHex = ('0x{0:X8}' -f [uint32]$manufacturerId)
+        }
+
+        # Derive a 4-char ASCII tag from the numeric ManufacturerId if string form unavailable
+        $idTag = $manufacturerIdString
+        if (-not $idTag -and $null -ne $manufacturerId) {
+            try {
+                $bytes = [BitConverter]::GetBytes([uint32]$manufacturerId)
+                [array]::Reverse($bytes)
+                $idTag = ([System.Text.Encoding]::ASCII.GetString($bytes)).Trim([char]0)
+            } catch {
+                $idTag = $null
+            }
+        }
+
+        $knownIssue = $null
+        $idTagNorm = if ($idTag) { $idTag.Trim() } else { '' }
+        if ($manufacturerId -eq 0x49465800 -or $idTagNorm -eq 'IFX') {
+            $knownIssue = "Infineon TPMs may require a CA certificate update for Autopilot AIK; verify firmware is current"
+        } elseif ($manufacturerId -eq 0x53544D20 -or $idTagNorm -eq 'STM') {
+            $knownIssue = "STMicro TPMs have had RSA 3072 + SHA-384 attestation rejection issues with Autopilot AIK; verify firmware is current"
+        } elseif ($manufacturerId -eq 0x4E544300 -or $idTagNorm -eq 'NTC') {
+            $knownIssue = "Nuvoton TPMs have had AIK enrollment issues with Autopilot; verify firmware is current"
+        }
+
         $Checks['TPM'] = [PSCustomObject]@{
-            Status  = if ($majorVersion -ge 2) { 'PASS' } else { 'FAIL' }
-            Present = $true
-            Version = $tpmVersion
-            Ready   = $tpm.TpmReady
+            Status               = if ($majorVersion -ge 2) { 'PASS' } else { 'FAIL' }
+            Present              = $true
+            Version              = $tpmVersion
+            Ready                = $tpm.TpmReady
+            ManufacturerId       = $manufacturerId
+            ManufacturerIdHex    = $manufacturerIdHex
+            ManufacturerIdString = $manufacturerIdString
+            ManufacturerVersion  = $manufacturerVersion
+            KnownIssue           = $knownIssue
         }
         if ($majorVersion -lt 2) {
             $Failures += "TPM version $tpmVersion is below 2.0"
@@ -82,13 +98,37 @@ try {
         } else {
             Write-Log "TPM PASS: version $tpmVersion"
         }
+        if ($knownIssue) {
+            Write-Log "TPM KnownIssue: $knownIssue" 'WARN'
+        }
     } else {
-        $Checks['TPM'] = [PSCustomObject]@{ Status = 'FAIL'; Present = $false; Version = $null; Ready = $false }
+        $Checks['TPM'] = [PSCustomObject]@{
+            Status               = 'FAIL'
+            Present              = $false
+            Version              = $null
+            Ready                = $false
+            ManufacturerId       = $null
+            ManufacturerIdHex    = $null
+            ManufacturerIdString = $null
+            ManufacturerVersion  = $null
+            KnownIssue           = $null
+        }
         $Failures += "TPM not present"
         Write-Log "TPM FAIL: not present" 'WARN'
     }
 } catch {
-    $Checks['TPM'] = [PSCustomObject]@{ Status = 'UNDETERMINED'; Present = $null; Version = $null; Ready = $null; Error = $_.ToString() }
+    $Checks['TPM'] = [PSCustomObject]@{
+        Status               = 'UNDETERMINED'
+        Present              = $null
+        Version              = $null
+        Ready                = $null
+        ManufacturerId       = $null
+        ManufacturerIdHex    = $null
+        ManufacturerIdString = $null
+        ManufacturerVersion  = $null
+        KnownIssue           = $null
+        Error                = $_.ToString()
+    }
     Write-ErrorLog "TPM check failed: $_"
 }
 #endregion
@@ -281,6 +321,18 @@ if ($NonInteractive) {
         Write-Host ""
         Write-Host "Failures:" -ForegroundColor Red
         foreach ($f in $Failures) { Write-Host "  - $f" -ForegroundColor Red }
+    }
+    $knownIssues = @()
+    foreach ($checkName in $Checks.Keys) {
+        $check = $Checks[$checkName]
+        if (($check.PSObject.Properties.Name -contains 'KnownIssue') -and $check.KnownIssue) {
+            $knownIssues += "[$checkName] $($check.KnownIssue)"
+        }
+    }
+    if ($knownIssues.Count -gt 0) {
+        Write-Host ""
+        Write-Host "Known issues (informational):" -ForegroundColor Yellow
+        foreach ($ki in $knownIssues) { Write-Host "  - $ki" -ForegroundColor Yellow }
     }
     Write-Host ""
     Write-Host "Report: $LogDir\AutopilotReadiness-Report.json"

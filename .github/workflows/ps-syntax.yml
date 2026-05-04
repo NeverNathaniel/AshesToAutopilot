@@ -10,13 +10,13 @@ on:
 
 jobs:
   validate:
-    name: Validate PowerShell Syntax
+    name: Lint PowerShell
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate .ps1 syntax
+      - name: Parse syntax
         shell: pwsh
         run: |
           $failed = 0
@@ -46,3 +46,34 @@ jobs:
               Write-Error "$failed script(s) have syntax errors"
               exit 1
           }
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+              Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          }
+          Import-Module PSScriptAnalyzer
+
+          $results = @()
+          $results += Invoke-ScriptAnalyzer -Path Scripts -Recurse -Severity @('Warning','Error')
+          foreach ($rootScript in @('Start-PreWipeToolkit.ps1', 'Start-PreWipeToolkitLite.ps1')) {
+              if (Test-Path $rootScript) {
+                  $results += Invoke-ScriptAnalyzer -Path $rootScript -Severity @('Warning','Error')
+              }
+          }
+
+          $errors   = @($results | Where-Object Severity -eq 'Error')
+          $warnings = @($results | Where-Object Severity -eq 'Warning')
+
+          foreach ($r in $errors) {
+              Write-Host "::error file=$($r.ScriptPath),line=$($r.Line)::[$($r.RuleName)] $($r.Message)"
+          }
+          foreach ($r in $warnings) {
+              Write-Host "::warning file=$($r.ScriptPath),line=$($r.Line)::[$($r.RuleName)] $($r.Message)"
+          }
+
+          Write-Host ""
+          Write-Host "PSScriptAnalyzer: $($errors.Count) error(s), $($warnings.Count) warning(s)"
+
+          if ($errors.Count -gt 0) { exit 1 }
