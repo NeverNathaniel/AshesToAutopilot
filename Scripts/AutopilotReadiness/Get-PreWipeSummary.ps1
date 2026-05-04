@@ -30,32 +30,9 @@ param(
 
 #region --- Init ---
 $ScriptName = 'Get-PreWipeSummary'
-$OutputRoot = 'C:\PreWipeOutput'
-$LogDir     = "$OutputRoot\Logs"
-$LogFile    = "$LogDir\$ScriptName.log"
-$ErrorLog   = "$OutputRoot\errors.log"
-
-if (-not (Test-Path $OutputRoot)) { New-Item -Path $OutputRoot -ItemType Directory -Force | Out-Null }
-if (-not (Test-Path $LogDir))     { New-Item -Path $LogDir     -ItemType Directory -Force | Out-Null }
-
-function Write-Log {
-    param([string]$Message, [string]$Level = 'INFO')
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [$Level] $Message" | Tee-Object -FilePath $LogFile -Append | Out-Null
-    if (-not $NonInteractive) { Write-Host "$ts [$Level] $Message" }
-}
-
-function Write-ErrorLog {
-    param([string]$Message)
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [ERROR] [$ScriptName] $Message" | Out-File -FilePath $ErrorLog -Append
-    Write-Log $Message 'ERROR'
-}
-
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "ERROR: This script must be run as Administrator." -ForegroundColor Red
-    exit 1
-}
+. (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+$LogFile = "$LogDir\$ScriptName.log"
+if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
 
 #region --- Known Script Outputs ---
@@ -85,13 +62,12 @@ $ScriptMap = [ordered]@{
     'WakeOnLan-Status.json'              = @{ Phase = 'Phase3-Hardware'; Script = 'Test-WakeOnLan'; StatusPath = 'OverallStatus' }
     'WakeOnLan-SetResult.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Set-WakeOnLan'; StatusPath = 'Success' }
     'WinRE-Status.json'                  = @{ Phase = 'Phase3-Hardware'; Script = 'Test-WinRE'; StatusPath = 'WinREEnabled' }
-    'Printers-Report.json'               = @{ Phase = 'Phase3-Hardware'; Script = 'Get-Printers'; StatusPath = 'PrinterCount' }
-    'DriverStatus-Report.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Test-DriverStatus'; StatusPath = 'Summary' }
+    'Printers-Report.json'               = @{ Phase = 'Phase3-Hardware'; Script = 'Get-Printers'; StatusPath = 'TotalPrinters' }
+    'DriverStatus-Report.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Test-DriverStatus'; StatusPath = 'TotalDrivers' }
     'DriverUpdate-Result.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Update-Drivers'; StatusPath = 'Success' }
     'DeviceHealth-Report.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Get-DeviceHealth'; StatusPath = 'OverallStatus' }
     # Phase 4
     'AutopilotRegister-Result.json'      = @{ Phase = 'Phase4-Autopilot'; Script = 'Register-AutopilotDevice'; StatusPath = 'Success' }
-    'AutopilotProfile-Status.json'       = @{ Phase = 'Phase4-Autopilot'; Script = 'Test-AutopilotProfile'; StatusPath = 'ProfileFound' }
     'AutopilotAssignment-Report.json'    = @{ Phase = 'Phase4-Autopilot'; Script = 'Get-AutopilotAssignment'; StatusPath = 'AssignedUser' }
 }
 #endregion
@@ -250,10 +226,10 @@ $Result = [PSCustomObject]@{
     ScriptDetails = $ScriptResults
 }
 
-$Result | ConvertTo-Json -Depth 10 | Out-File "$LogDir\PreWipeSummary-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\PreWipeSummary-Report.json" -Force
 
 if ($NonInteractive) {
-    $Result | ConvertTo-Json -Depth 10
+    $Result | ConvertTo-Json -Depth 5
 } else {
     Write-Host ""
     Write-Host "======================================" -ForegroundColor Cyan
