@@ -157,6 +157,42 @@ $Results = @()
 #endregion
 
 #region --- Display Helpers ---
+$esc = [char]27
+
+function Get-RainbowColor {
+    param([int]$Index, [int]$Total)
+    $pos = if ($Total -le 1) { 0 } else { $Index / ($Total - 1) }
+    $h = $pos * 280
+    $c = 1.0; $x = $c * (1 - [Math]::Abs(($h / 60) % 2 - 1)); $m = 0.0
+    $r=0; $g=0; $b=0
+    if ($h -lt 60) { $r=$c; $g=$x; $b=0 }
+    elseif ($h -lt 120) { $r=$x; $g=$c; $b=0 }
+    elseif ($h -lt 180) { $r=0; $g=$c; $b=$x }
+    elseif ($h -lt 240) { $r=0; $g=$x; $b=$c }
+    else { $r=$x; $g=0; $b=$c }
+    $R = [int](($r+$m)*255); $G = [int](($g+$m)*255); $B = [int](($b+$m)*255)
+    return "$esc[38;2;$R;$G;$B`m"
+}
+
+function Write-RainbowBanner {
+    $banner = @(
+        "    ___       __             ______         ___        __             _ __     __ "
+        "   / _ |_____/ /  ___ ___   /_  __/__      / _ |__ __ / /____  ___   (_) /__  / / "
+        "  / __ /___/ _ \ / -_|_-<    / / / _ \    / __ / // // __/ _ \/ _ \ / / / _ \/ /  "
+        " /_/ |_\   /_//_/\__/___/   /_/  \___/   /_/ |_\_,_(_)__/\___/ .__//_/_/\___/_/   "
+        "                                                            /_/                   "
+    )
+    $width = $banner[0].Length
+    foreach ($line in $banner) {
+        $outStr = ""
+        for ($i = 0; $i -lt $line.Length; $i++) {
+            $outStr += "$(Get-RainbowColor -Index $i -Total $width)$($line[$i])"
+        }
+        Write-Host "$outStr$esc[0m"
+    }
+    Write-Host ""
+}
+
 function Write-CyanBox {
     param([string[]]$Lines, [int]$MinWidth = 56)
     if (-not $Lines -or $Lines.Count -eq 0) { $Lines = @('') }
@@ -176,8 +212,8 @@ function Write-CyanBox {
 
 function Show-Header {
     Write-Host ''
-    Write-Host '  Pre-Wipe Toolkit Lite' -NoNewline -ForegroundColor White
-    Write-Host ' · AshesToAutopilot' -ForegroundColor DarkGray
+    Write-RainbowBanner
+    Write-Host '  Pre-Wipe Toolkit Lite' -ForegroundColor White
     Write-Host "  $ComputerName · SN: $SerialNumber · $CurrentUser" -ForegroundColor DarkGray
 
     # Progress bar
