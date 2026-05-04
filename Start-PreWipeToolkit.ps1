@@ -92,42 +92,50 @@ function Write-ErrorLog {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CUSTOM TUI: ANSI HELPERS & RAINBOW ENGINE
+# CUSTOM TUI: ANSI HELPERS & FLAME ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 $esc = [char]27
+$script:AnsiRegex = [regex]("$([regex]::Escape($esc))\[[0-9;]*m")
 
-function Get-RainbowColor {
+# Returns visible character count (strips ANSI escape sequences)
+function Get-VisibleLength { param([string]$T); return ($script:AnsiRegex.Replace($T, '')).Length }
+
+# Pads an ANSI-colored string to a target visible width
+function Set-AnsiPad { param([string]$T, [int]$W); return $T + (' ' * [Math]::Max(0, $W - (Get-VisibleLength $T))) }
+
+# Flame gradient: dark red → bright red → orange → golden yellow
+function Get-FlameColor {
     param([int]$Index, [int]$Total)
     $pos = if ($Total -le 1) { 0 } else { $Index / ($Total - 1) }
-    $h = $pos * 280 # 0=Red, 60=Yellow, 120=Green, 180=Cyan, 240=Blue, 280=Purple
-    $c = 1.0; $x = $c * (1 - [Math]::Abs(($h / 60) % 2 - 1)); $m = 0.0
-    $r=0; $g=0; $b=0
-    if ($h -lt 60) { $r=$c; $g=$x; $b=0 }
-    elseif ($h -lt 120) { $r=$x; $g=$c; $b=0 }
-    elseif ($h -lt 180) { $r=0; $g=$c; $b=$x }
-    elseif ($h -lt 240) { $r=0; $g=$x; $b=$c }
-    else { $r=$x; $g=0; $b=$c }
-    $R = [int](($r+$m)*255); $G = [int](($g+$m)*255); $B = [int](($b+$m)*255)
+    $h = $pos * 50            # Hue: 0 (red) → 50 (golden yellow)
+    $s = 1.0 - ($pos * 0.1)   # Slight desaturation toward yellow
+    $v = 0.55 + ($pos * 0.45) # Darker left (embers), brighter right (flame tip)
+    $c = $v * $s
+    $x = $c * (1 - [Math]::Abs(($h / 60) % 2 - 1))
+    $m = $v - $c
+    $R = [int](($c + $m) * 255); $G = [int](($x + $m) * 255); $B = [int]($m * 255)
     return "$esc[38;2;$R;$G;$B`m"
 }
 
-function Write-RainbowBanner {
-    $banner = @(
+# Returns the ASCII banner as an array of flame-colored ANSI strings
+function Get-BannerLines {
+    $art = @(
         "    ___       __             ______         ___        __             _ __     __ "
         "   / _ |_____/ /  ___ ___   /_  __/__      / _ |__ __ / /____  ___   (_) /__  / / "
         "  / __ /___/ _ \ / -_|_-<    / / / _ \    / __ / // // __/ _ \/ _ \ / / / _ \/ /  "
         " /_/ |_\   /_//_/\__/___/   /_/  \___/   /_/ |_\_,_(_)__/\___/ .__//_/_/\___/_/   "
         "                                                            /_/                   "
     )
-    $width = $banner[0].Length
-    foreach ($line in $banner) {
-        $outStr = ""
-        for ($i = 0; $i -lt $line.Length; $i++) {
-            $outStr += "$(Get-RainbowColor -Index $i -Total $width)$($line[$i])"
+    $w = $art[0].Length
+    $lines = @()
+    foreach ($row in $art) {
+        $s = ""
+        for ($i = 0; $i -lt $row.Length; $i++) {
+            $s += "$(Get-FlameColor -Index $i -Total $w)$($row[$i])"
         }
-        Write-Host "$outStr$esc[0m"
+        $lines += "$s$esc[0m"
     }
-    Write-Host ""
+    return $lines
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -412,7 +420,7 @@ $script:Steps = @(
 $script:WorkflowItems = @(
     [PSCustomObject]@{ Index = 0; DisplayName = 'Run All (Sequential)';  Action = 'RunAll';   IsWorkflow = $true }
     [PSCustomObject]@{ Index = 0; DisplayName = 'View Session Summary';  Action = 'Summary';  IsWorkflow = $true }
-    [PSCustomObject]@{ Index = 0; DisplayName = 'Export Session Report'; Action = 'Export';   IsWorkflow = $true }
+    [PSCustomObject]@{ Index = 0; DisplayName = 'Export Session Report (TXT/JSON/HTML)'; Action = 'Export';   IsWorkflow = $true }
     [PSCustomObject]@{ Index = 0; DisplayName = 'Reset Session';         Action = 'Reset';    IsWorkflow = $true }
     [PSCustomObject]@{ Index = 0; DisplayName = 'Exit';                  Action = 'Exit';     IsWorkflow = $true }
 )
@@ -519,10 +527,21 @@ function Build-MenuItems {
 function Draw-Dashboard {
     param([int]$SelectedIndex, [int]$ScrollTop)
     
-    # Hide cursor, move home, clear screen below
-    Write-Host -NoNewline "$esc[?25l$esc[H$esc[2J"
+    # Hide cursor and move home (NO screen clear here to prevent flicker)
+    Write-Host -NoNewline "$esc[?25l$esc[H"
     
-    Write-RainbowBanner
+    $width = $Host.UI.RawUI.WindowSize.Width
+    if ($width -lt 90) { $width = 90 }
+    
+    # Dynamic sizing based on terminal window
+    $leftInnerWidth = [Math]::Floor(($width - 3) * 0.55)
+    $rightInnerWidth = $width - 3 - $leftInnerWidth
+    $viewHeight = [Math]::Max(10, $Host.UI.RawUI.WindowSize.Height - 12)
+    
+    $bannerLines = Get-BannerLines
+    foreach ($line in $bannerLines) {
+        Write-Host $line
+    }
     
     $totalSteps = $script:Steps.Count
     $done  = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
@@ -530,24 +549,17 @@ function Draw-Dashboard {
     $skip  = @($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
     $norun = @($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
 
-    $viewHeight = 18
-    $leftWidth = 60
-    $rightWidth = 50
-    
+    # Build menu lines
     $menuLines = @()
     for ($i = $ScrollTop; $i -lt [Math]::Min($script:MenuItems.Count, $ScrollTop + $viewHeight); $i++) {
         $item = $script:MenuItems[$i]
         $prefix = if ($i -eq $SelectedIndex) { " $esc[32m>>$esc[0m " } else { "    " }
         
         if ($item.IsHeader) {
-            $line = "$prefix$esc[36m$($item.DisplayName)$esc[0m"
-            $plain = "    $($item.DisplayName)"
-            $menuLines += $line + (" " * [Math]::Max(0, $leftWidth - $plain.Length))
+            $menuLines += Set-AnsiPad "$prefix$esc[36m$($item.DisplayName)$esc[0m" $leftInnerWidth
         }
         elseif ($item.IsWorkflow) {
-            $line = "$prefix$esc[37m$($item.DisplayName)$esc[0m"
-            $plain = "    $($item.DisplayName)"
-            $menuLines += $line + (" " * [Math]::Max(0, $leftWidth - $plain.Length))
+            $menuLines += Set-AnsiPad "$prefix$esc[37m$($item.DisplayName)$esc[0m" $leftInnerWidth
         }
         else {
             $badgeColor = switch ($item.Status) {
@@ -556,65 +568,65 @@ function Draw-Dashboard {
                 'SKIP' { "$esc[33m[SKIP]$esc[0m" }
                 default { "$esc[90m[    ]$esc[0m" }
             }
-            $line = "$prefix$badgeColor $($item.DisplayName)"
-            $plain = "    [XXXX] $($item.DisplayName)"
-            $menuLines += $line + (" " * [Math]::Max(0, $leftWidth - $plain.Length))
+            $menuLines += Set-AnsiPad "$prefix$badgeColor $($item.DisplayName)" $leftInnerWidth
         }
     }
-    
-    while ($menuLines.Count -lt $viewHeight) { $menuLines += (" " * $leftWidth) }
+    while ($menuLines.Count -lt $viewHeight) { $menuLines += (" " * $leftInnerWidth) }
 
+    # Build right pane lines
     $rightLines = @()
-    $rightLines += "$esc[36m=== SESSION STATUS ===$esc[0m"
-    $rightLines += " Computer : $($script:ComputerName)"
-    $rightLines += " User     : $($script:CurrentUser)"
-    $rightLines += ""
+    $rightLines += Set-AnsiPad " $esc[36m=== SESSION STATUS ===$esc[0m" $rightInnerWidth
+    $rightLines += Set-AnsiPad " Computer : $($script:ComputerName)" $rightInnerWidth
+    $rightLines += Set-AnsiPad " User     : $($script:CurrentUser)" $rightInnerWidth
+    $rightLines += (" " * $rightInnerWidth)
     
-    $barLen = 24
+    $barLen = [Math]::Min(24, $rightInnerWidth - 14)
     $filled = if ($totalSteps -gt 0) { [Math]::Floor(($done / $totalSteps) * $barLen) } else { 0 }
     $empty  = $barLen - $filled
     $barStr = "$esc[32m$([string]::new([char]0x2588, $filled))$esc[90m$([string]::new([char]0x2591, $empty))$esc[0m"
-    $rightLines += " Progress : $barStr"
-    $rightLines += " Passed   : $esc[32m$done$esc[0m    Failed : $esc[31m$fail$esc[0m"
-    $rightLines += " Skipped  : $esc[33m$skip$esc[0m    Not Run: $norun"
-    $rightLines += ""
+    $rightLines += Set-AnsiPad " Progress : $barStr" $rightInnerWidth
+    $rightLines += Set-AnsiPad " Passed   : $esc[32m$done$esc[0m  Failed : $esc[31m$fail$esc[0m" $rightInnerWidth
+    $rightLines += Set-AnsiPad " Skipped  : $esc[33m$skip$esc[0m  Not Run: $norun" $rightInnerWidth
+    $rightLines += (" " * $rightInnerWidth)
     
-    $rightLines += "$esc[36m=== SELECTION ===$esc[0m"
+    $rightLines += Set-AnsiPad " $esc[36m=== SELECTION ===$esc[0m" $rightInnerWidth
     $selItem = $script:MenuItems[$SelectedIndex]
     if ($selItem.IsHeader) {
-        $rightLines += " Category header."
+        $rightLines += Set-AnsiPad " Category header." $rightInnerWidth
     } elseif ($selItem.IsWorkflow) {
-        $rightLines += " Action: $($selItem.DisplayName)"
+        $rightLines += Set-AnsiPad " Action: $($selItem.DisplayName)" $rightInnerWidth
     } else {
-        $rightLines += " Step   : $($selItem.Index)"
-        $rightLines += " Name   : $($selItem.DisplayName)"
-        $rightLines += " Status : $($selItem.Status)"
-        $rightLines += " Script : $(Split-Path $selItem.ScriptPath -Leaf)"
+        $rightLines += Set-AnsiPad " Step   : $($selItem.Index)" $rightInnerWidth
+        $rightLines += Set-AnsiPad " Name   : $($selItem.DisplayName)" $rightInnerWidth
+        $rightLines += Set-AnsiPad " Status : $($selItem.Status)" $rightInnerWidth
+        $rightLines += Set-AnsiPad " Script : $(Split-Path $selItem.ScriptPath -Leaf)" $rightInnerWidth
     }
     
-    $rightLines += ""
-    $rightLines += "$esc[36m=== LAST RESULT ===$esc[0m"
+    $rightLines += (" " * $rightInnerWidth)
+    $rightLines += Set-AnsiPad " $esc[36m=== LAST RESULT ===$esc[0m" $rightInnerWidth
     
     $words = $script:LastActionResult -split ' '
     $curLine = " "
     foreach ($w in $words) {
-        if (($curLine.Length + $w.Length) -gt 45) {
-            $rightLines += $curLine
+        if (($curLine.Length + $w.Length) -gt ($rightInnerWidth - 2)) {
+            $rightLines += Set-AnsiPad $curLine $rightInnerWidth
             $curLine = "  $w "
         } else {
             $curLine += "$w "
         }
     }
-    if ($curLine.Trim() -ne "") { $rightLines += $curLine }
+    if ($curLine.Trim() -ne "") { $rightLines += Set-AnsiPad $curLine $rightInnerWidth }
 
-    while ($rightLines.Count -lt $viewHeight) { $rightLines += "" }
+    while ($rightLines.Count -lt $viewHeight) { $rightLines += (" " * $rightInnerWidth) }
 
+    # Draw framed box with flame border colors (deep red)
+    Write-Host "$esc[38;2;180;30;20m╔$([string]::new('═', $leftInnerWidth))╦$([string]::new('═', $rightInnerWidth))╗$esc[0m"
     for ($i = 0; $i -lt $viewHeight; $i++) {
-        Write-Host "$($menuLines[$i]) $esc[90m|$esc[0m $($rightLines[$i])"
+        Write-Host "$esc[38;2;180;30;20m║$esc[0m$($menuLines[$i])$esc[38;2;180;30;20m║$esc[0m$($rightLines[$i])$esc[38;2;180;30;20m║$esc[0m"
     }
-
-    Write-Host "$esc[90m$([string]::new('-', $leftWidth + $rightWidth + 3))$esc[0m"
+    Write-Host "$esc[38;2;180;30;20m╚$([string]::new('═', $leftInnerWidth))╩$([string]::new('═', $rightInnerWidth))╝$esc[0m"
     Write-Host "  [↑/↓] Navigate    [ENTER] Execute    [ESC] Exit" -ForegroundColor DarkGray
+    Write-Host "$esc[K" # Clear remainder of line to prevent artifacting
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -725,11 +737,17 @@ function Export-SessionReport {
     $baseName = "PreWipeReport_$($script:ComputerName)_$stamp"
     $jsonPath = Join-Path $OutputRoot "$baseName.json"
     $txtPath  = Join-Path $OutputRoot "$baseName.txt"
+    $htmlPath = Join-Path $OutputRoot "$baseName.html"
 
     # JSON export
     try {
         $script:Session | ConvertTo-Json -Depth 5 | Set-Content $jsonPath -Encoding UTF8 -Force
     } catch { Write-ErrorLog "JSON export failed: $_" }
+
+    $done  = ($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
+    $fail  = ($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count
+    $skip  = ($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
+    $norun = ($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
 
     # Readable TXT export with full step detail
     try {
@@ -753,10 +771,6 @@ function Export-SessionReport {
             $lines.Add('')
         }
 
-        $done  = ($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
-        $fail  = ($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count
-        $skip  = ($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
-        $norun = ($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
         $lines.Add('--- Summary ---')
         $lines.Add("  Passed  : $done")
         $lines.Add("  Failed  : $fail")
@@ -766,7 +780,58 @@ function Export-SessionReport {
         $lines | Set-Content $txtPath -Encoding UTF8 -Force
     } catch { Write-ErrorLog "TXT export failed: $_" }
 
-    $script:LastActionResult = "Session exported to $OutputRoot successfully."
+    # HTML export
+    try {
+        $html = @"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pre-Wipe Report - $($script:ComputerName)</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background-color: #1e1e1e; color: #d4d4d4; }
+        h1 { color: #ff6b35; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        h2 { color: #569cd6; margin-top: 30px; }
+        .status-DONE { color: #4CAF50; font-weight: bold; }
+        .status-FAIL { color: #F44336; font-weight: bold; }
+        .status-SKIP { color: #FF9800; font-weight: bold; }
+        .status-not-run { color: #9E9E9E; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #333; }
+        th { background-color: #2d2d2d; color: #4FC1FF; text-transform: uppercase; font-size: 0.9em; }
+        tr:nth-child(even) { background-color: #252526; }
+        tr:hover { background-color: #333; }
+        .summary-box { background: #252526; padding: 20px; border-radius: 8px; border-left: 4px solid #ff6b35; margin-bottom: 30px; }
+    </style>
+</head>
+<body>
+    <h1>Pre-Wipe Session Report</h1>
+    <div class="summary-box">
+        <p><strong>Computer:</strong> $($script:ComputerName) &nbsp;|&nbsp;
+        <strong>User:</strong> $($script:CurrentUser) &nbsp;|&nbsp;
+        <strong>Serial:</strong> $($script:SerialNumber)<br>
+        <strong>Generated:</strong> $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
+        <p style="font-size: 1.1em;">Passed: <span class="status-DONE">$done</span> &nbsp;|&nbsp; 
+           Failed: <span class="status-FAIL">$fail</span> &nbsp;|&nbsp; 
+           Skipped: <span class="status-SKIP">$skip</span> &nbsp;|&nbsp; 
+           Not Run: <span class="status-not-run">$norun</span></p>
+    </div>
+"@
+        foreach ($group in ($script:Steps | Group-Object Phase)) {
+            $html += "<h2>$(Get-PhaseLabel $group.Name)</h2><table><tr><th>Status</th><th>Step</th><th>Timestamp</th></tr>"
+            foreach ($step in $group.Group) {
+                $stepData = $script:Session.Steps["$($step.Index)"]
+                $ts = if ($stepData -and $stepData.Timestamp) { $stepData.Timestamp } else { '-' }
+                $html += "<tr><td class='status-$($step.Status)'>$($step.Status)</td><td>$($step.DisplayName)</td><td>$ts</td></tr>"
+            }
+            $html += "</table>"
+        }
+        $html += "</body></html>"
+        $html | Set-Content $htmlPath -Encoding UTF8 -Force
+    } catch { Write-ErrorLog "HTML export failed: $_" }
+
+    $script:LastActionResult = "Session exported to JSON, TXT, and HTML in $OutputRoot."
+    Write-Host "  Finished. Returning to dashboard in 2 seconds..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 2
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -867,6 +932,8 @@ try {
                     } else {
                         Invoke-Step -Step $sel
                     }
+                    # Clear screen fully after an action returns so the dashboard repaints clean
+                    if ($running) { Write-Host -NoNewline "$esc[2J$esc[H" }
                 }
                 27 { # Escape
                     $running = $false
