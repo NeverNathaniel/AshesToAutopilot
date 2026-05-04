@@ -292,3 +292,5 @@ if ($NonInteractive) {
     Write-Host ""
 }
 #endregion
+
+if ($OverallVerdict -eq 'NOT_SAFE') { exit 1 }

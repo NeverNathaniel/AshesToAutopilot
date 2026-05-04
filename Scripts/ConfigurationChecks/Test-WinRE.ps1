@@ -132,3 +132,5 @@ if ($NonInteractive) {
     Write-Host ""
 }
 #endregion
+
+if (-not $Result.WinREEnabled) { exit 1 }

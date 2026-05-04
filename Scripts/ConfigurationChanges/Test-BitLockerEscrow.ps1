@@ -159,9 +159,14 @@ try {
 #endregion
 
 #region --- Output ---
+$allEscrowed = -not ($Results | Where-Object {
+    $_.EscrowStatus -in @('EscrowFailed', 'NoRecoveryKey')
+})
+
 $Summary = [PSCustomObject]@{
-    Timestamp = (Get-Date -Format 'o')
-    Results   = $Results
+    Timestamp   = (Get-Date -Format 'o')
+    AllEscrowed = [bool]$allEscrowed
+    Results     = $Results
 }
 
 $Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\BitLockerEscrow-Report.json" -Force
@@ -189,3 +194,5 @@ if ($NonInteractive) {
     Write-Host ""
 }
 #endregion
+
+if (-not $allEscrowed) { exit 1 }
