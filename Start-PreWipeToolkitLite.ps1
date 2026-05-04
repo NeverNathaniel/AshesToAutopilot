@@ -159,18 +159,16 @@ $Results = @()
 #region --- Display Helpers ---
 $esc = [char]27
 
-function Get-RainbowColor {
+function Get-FlameColor {
     param([int]$Index, [int]$Total)
     $pos = if ($Total -le 1) { 0 } else { $Index / ($Total - 1) }
-    $h = $pos * 280
-    $c = 1.0; $x = $c * (1 - [Math]::Abs(($h / 60) % 2 - 1)); $m = 0.0
-    $r=0; $g=0; $b=0
-    if ($h -lt 60) { $r=$c; $g=$x; $b=0 }
-    elseif ($h -lt 120) { $r=$x; $g=$c; $b=0 }
-    elseif ($h -lt 180) { $r=0; $g=$c; $b=$x }
-    elseif ($h -lt 240) { $r=0; $g=$x; $b=$c }
-    else { $r=$x; $g=0; $b=$c }
-    $R = [int](($r+$m)*255); $G = [int](($g+$m)*255); $B = [int](($b+$m)*255)
+    $h = $pos * 50
+    $s = 1.0 - ($pos * 0.1)
+    $v = 0.55 + ($pos * 0.45)
+    $c = $v * $s
+    $x = $c * (1 - [Math]::Abs(($h / 60) % 2 - 1))
+    $m = $v - $c
+    $R = [int](($c + $m) * 255); $G = [int](($x + $m) * 255); $B = [int]($m * 255)
     return "$esc[38;2;$R;$G;$B`m"
 }
 
@@ -186,7 +184,7 @@ function Write-RainbowBanner {
     foreach ($line in $banner) {
         $outStr = ""
         for ($i = 0; $i -lt $line.Length; $i++) {
-            $outStr += "$(Get-RainbowColor -Index $i -Total $width)$($line[$i])"
+            $outStr += "$(Get-FlameColor -Index $i -Total $width)$($line[$i])"
         }
         Write-Host "$outStr$esc[0m"
     }
