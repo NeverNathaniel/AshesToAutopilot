@@ -38,37 +38,37 @@ if (-not (Test-AdminElevation)) { exit 1 }
 #region --- Known Script Outputs ---
 # Map each expected JSON file to its phase, script name, and how to extract status
 $ScriptMap = [ordered]@{
-    # Phase 1
-    'DellCommandTools-Status.json'       = @{ Phase = 'Phase1-Prerequisites'; Script = 'Install-DellCommandTools'; StatusPath = 'DCU.Success' }
-    'WindowsProductKey-Report.json'      = @{ Phase = 'Phase1-Prerequisites'; Script = 'Get-WindowsProductKey'; StatusPath = 'HasOEMKey' }
-    'AutopilotReadiness-Report.json'     = @{ Phase = 'Phase1-Prerequisites'; Script = 'Test-AutopilotReadiness'; StatusPath = 'OverallStatus' }
-    # Phase 2
-    'OneDriveKFM-Status.json'            = @{ Phase = 'Phase2-DataBackup'; Script = 'Test-OneDriveKFM'; StatusPath = 'ProfilesChecked' }
-    'OneDriveSyncStatus-Report.json'     = @{ Phase = 'Phase2-DataBackup'; Script = 'Test-OneDriveSyncStatus'; StatusPath = 'OverallVerdict' }
-    'DownloadsSize.json'                 = @{ Phase = 'Phase2-DataBackup'; Script = 'Get-DownloadsSize'; StatusPath = 'ProfilesChecked' }
-    'BrowserBookmarks-Report.json'       = @{ Phase = 'Phase2-DataBackup'; Script = 'Backup-BrowserBookmarks'; StatusPath = 'TotalBackedUp' }
-    'Find-UnbackedData-Report.json'      = @{ Phase = 'Phase2-DataBackup'; Script = 'Find-UnbackedData'; StatusPath = 'ProfilesChecked' }
-    'OutlookSignatures-Report.json'      = @{ Phase = 'Phase2-DataBackup'; Script = 'Backup-OutlookSignatures'; StatusPath = 'ProfilesChecked' }
-    'DriveMappings-Report.json'          = @{ Phase = 'Phase2-DataBackup'; Script = 'Get-DriveMappings'; StatusPath = 'ProfilesChecked' }
-    'BitLockerEscrow-Report.json'        = @{ Phase = 'Phase2-DataBackup'; Script = 'Test-BitLockerEscrow'; StatusPath = 'AllEscrowed' }
-    'TaskbarLayout-Report.json'          = @{ Phase = 'Phase2-DataBackup'; Script = 'Backup-TaskbarLayout'; StatusPath = 'ProfilesChecked' }
-    'DesktopBackground-Report.json'      = @{ Phase = 'Phase2-DataBackup'; Script = 'Backup-DesktopBackground'; StatusPath = 'ProfilesChecked' }
-    'WiFiProfiles-Report.json'           = @{ Phase = 'Phase2-DataBackup'; Script = 'Backup-WiFiProfiles'; StatusPath = 'ExportedCount' }
-    'InstalledApplications-Report.json'  = @{ Phase = 'Phase2-DataBackup'; Script = 'Get-InstalledApplications'; StatusPath = 'TotalCount' }
-    # Phase 3
-    'StorageMode-Report.json'            = @{ Phase = 'Phase3-Hardware'; Script = 'Get-StorageMode'; StatusPath = 'StorageMode' }
-    'BiosVersion-Report.json'            = @{ Phase = 'Phase3-Hardware'; Script = 'Test-BiosVersion'; StatusPath = 'CurrentVersion' }
-    'BiosUpdate-Result.json'             = @{ Phase = 'Phase3-Hardware'; Script = 'Update-Bios'; StatusPath = 'Success' }
-    'WakeOnLan-Status.json'              = @{ Phase = 'Phase3-Hardware'; Script = 'Test-WakeOnLan'; StatusPath = 'OverallStatus' }
-    'WakeOnLan-SetResult.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Set-WakeOnLan'; StatusPath = 'Success' }
-    'WinRE-Status.json'                  = @{ Phase = 'Phase3-Hardware'; Script = 'Test-WinRE'; StatusPath = 'WinREEnabled' }
-    'Printers-Report.json'               = @{ Phase = 'Phase3-Hardware'; Script = 'Get-Printers'; StatusPath = 'TotalPrinters' }
-    'DriverStatus-Report.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Test-DriverStatus'; StatusPath = 'TotalDrivers' }
-    'DriverUpdate-Result.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Update-Drivers'; StatusPath = 'Success' }
-    'DeviceHealth-Report.json'           = @{ Phase = 'Phase3-Hardware'; Script = 'Get-DeviceHealth'; StatusPath = 'OverallStatus' }
-    # Phase 4
-    'AutopilotRegister-Result.json'      = @{ Phase = 'Phase4-Autopilot'; Script = 'Register-AutopilotDevice'; StatusPath = 'Success' }
-    'AutopilotAssignment-Report.json'    = @{ Phase = 'Phase4-Autopilot'; Script = 'Get-AutopilotAssignment'; StatusPath = 'AssignedUser' }
+    # Scan, Check & Backup
+    'DellCommandTools-Status.json'       = @{ Phase = 'ScanCheckBackup'; Script = 'Install-DellCommandTools'; StatusPath = 'DCU.Success' }
+    'WindowsProductKey-Report.json'      = @{ Phase = 'ScanCheckBackup'; Script = 'Get-WindowsProductKey'; StatusPath = 'HasOEMKey' }
+    'OneDriveKFM-Status.json'            = @{ Phase = 'ScanCheckBackup'; Script = 'Test-OneDriveKFM'; StatusPath = 'ProfilesChecked' }
+    'OneDriveSyncStatus-Report.json'     = @{ Phase = 'ScanCheckBackup'; Script = 'Test-OneDriveSyncStatus'; StatusPath = 'OverallVerdict' }
+    'DownloadsSize.json'                 = @{ Phase = 'ScanCheckBackup'; Script = 'Get-DownloadsSize'; StatusPath = 'ProfilesChecked' }
+    'BrowserBookmarks-Report.json'       = @{ Phase = 'ScanCheckBackup'; Script = 'Backup-BrowserBookmarks'; StatusPath = 'TotalBackedUp' }
+    'Find-UnbackedData-Report.json'      = @{ Phase = 'ScanCheckBackup'; Script = 'Find-UnbackedData'; StatusPath = 'ProfilesChecked' }
+    'OutlookSignatures-Report.json'      = @{ Phase = 'ScanCheckBackup'; Script = 'Backup-OutlookSignatures'; StatusPath = 'ProfilesChecked' }
+    'DriveMappings-Report.json'          = @{ Phase = 'ScanCheckBackup'; Script = 'Get-DriveMappings'; StatusPath = 'ProfilesChecked' }
+    'TaskbarLayout-Report.json'          = @{ Phase = 'ScanCheckBackup'; Script = 'Backup-TaskbarLayout'; StatusPath = 'ProfilesChecked' }
+    'DesktopBackground-Report.json'      = @{ Phase = 'ScanCheckBackup'; Script = 'Backup-DesktopBackground'; StatusPath = 'ProfilesChecked' }
+    'WiFiProfiles-Report.json'           = @{ Phase = 'ScanCheckBackup'; Script = 'Backup-WiFiProfiles'; StatusPath = 'ExportedCount' }
+    'InstalledApplications-Report.json'  = @{ Phase = 'ScanCheckBackup'; Script = 'Get-InstalledApplications'; StatusPath = 'TotalCount' }
+    'StorageMode-Report.json'            = @{ Phase = 'ScanCheckBackup'; Script = 'Get-StorageMode'; StatusPath = 'StorageMode' }
+    'BiosVersion-Report.json'            = @{ Phase = 'ScanCheckBackup'; Script = 'Test-BiosVersion'; StatusPath = 'CurrentVersion' }
+    'WakeOnLan-Status.json'              = @{ Phase = 'ScanCheckBackup'; Script = 'Test-WakeOnLan'; StatusPath = 'OverallStatus' }
+    'WinRE-Status.json'                  = @{ Phase = 'ScanCheckBackup'; Script = 'Test-WinRE'; StatusPath = 'WinREEnabled' }
+    'Printers-Report.json'               = @{ Phase = 'ScanCheckBackup'; Script = 'Get-Printers'; StatusPath = 'TotalPrinters' }
+    'DriverStatus-Report.json'           = @{ Phase = 'ScanCheckBackup'; Script = 'Test-DriverStatus'; StatusPath = 'TotalDrivers' }
+    'DeviceHealth-Report.json'           = @{ Phase = 'ScanCheckBackup'; Script = 'Get-DeviceHealth'; StatusPath = 'OverallStatus' }
+    # Configure
+    'BitLockerEscrow-Report.json'        = @{ Phase = 'Configure'; Script = 'Test-BitLockerEscrow'; StatusPath = 'AllEscrowed' }
+    'WakeOnLan-SetResult.json'           = @{ Phase = 'Configure'; Script = 'Set-WakeOnLan'; StatusPath = 'Success' }
+    # Install & Update
+    'BiosUpdate-Result.json'             = @{ Phase = 'InstallUpdate'; Script = 'Update-Bios'; StatusPath = 'Success' }
+    'DriverUpdate-Result.json'           = @{ Phase = 'InstallUpdate'; Script = 'Update-Drivers'; StatusPath = 'Success' }
+    # Autopilot
+    'AutopilotReadiness-Report.json'     = @{ Phase = 'Autopilot'; Script = 'Test-AutopilotReadiness'; StatusPath = 'OverallStatus' }
+    'AutopilotRegister-Result.json'      = @{ Phase = 'Autopilot'; Script = 'Register-AutopilotDevice'; StatusPath = 'Success' }
+    'AutopilotAssignment-Report.json'    = @{ Phase = 'Autopilot'; Script = 'Get-AutopilotAssignment'; StatusPath = 'AssignedUser' }
 }
 #endregion
 
@@ -177,10 +177,10 @@ Write-Log "Blockers found: $($Blockers.Count)"
 
 #region --- Phase Summary ---
 $PhaseNames = [ordered]@{
-    'Phase1-Prerequisites' = 'Prerequisites'
-    'Phase2-DataBackup'    = 'Data Backup'
-    'Phase3-Hardware'      = 'Hardware & Firmware'
-    'Phase4-Autopilot'     = 'Autopilot & Enrollment'
+    'ScanCheckBackup' = 'Scan, Check & Backup'
+    'Configure'       = 'Configure'
+    'InstallUpdate'   = 'Install & Update'
+    'Autopilot'       = 'Autopilot & Enrollment'
 }
 
 $PhaseSummary = @()
