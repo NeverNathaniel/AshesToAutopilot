@@ -732,6 +732,12 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
             '*Get-TeamsData*'               { return @{ Verdict = 'PASS'; Reason = 'Informational' } }
             '*Get-CredentialManagerEntries*'{ return @{ Verdict = 'PASS'; Reason = 'Informational' } }
             '*Get-LocalAccounts*'           { return @{ Verdict = 'PASS'; Reason = 'Informational' } }
+            '*Register-AutopilotDevice*' {
+                if ($Parsed.Success -eq $true) { return @{ Verdict = 'PASS'; Reason = "Device registered (upload: $($Parsed.UploadStatus))" } }
+                if ($Parsed.UploadStatus -eq 'UploadFailed') { return @{ Verdict = 'FAIL'; Reason = "Autopilot upload failed: $($Parsed.Error)" } }
+                if ($Parsed.UploadStatus -eq 'HashCollected') { return @{ Verdict = 'WARN'; Reason = 'Hash collected but not uploaded' } }
+                return @{ Verdict = 'FAIL'; Reason = 'Registration did not complete successfully' }
+            }
             default                         { return @{ Verdict = 'PASS'; Reason = 'Completed' } }
         }
     } catch { return @{ Verdict = 'WARN'; Reason = "Evaluation error: $_" } }
