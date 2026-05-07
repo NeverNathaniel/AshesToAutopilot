@@ -29,22 +29,22 @@
 #>
 
 [CmdletBinding()]
-param([switch]$NonInteractive)
+param([switch]$NonInteractive) # Non-interactive mode emits JSON to stdout only
 
 #region --- Init / Admin Check ---
 
-$ScriptName  = 'Start-PreWipeToolkit'
-$OutputRoot  = 'C:\PreWipeOutput'
-$LogDir      = Join-Path $OutputRoot 'Logs'
-$LogFile     = Join-Path $LogDir "$ScriptName`_$(Get-Date -Format 'yyyyMMdd').log"
-$ErrorLog    = Join-Path $LogDir "$ScriptName`_Errors_$(Get-Date -Format 'yyyyMMdd').log"
-$SessionFile = Join-Path $OutputRoot 'session.json'
+$ScriptName  = 'Start-PreWipeToolkit' # Script identifier for log headers
+$OutputRoot  = 'C:\PreWipeOutput' # Base output directory
+$LogDir      = Join-Path $OutputRoot 'Logs' # Log file directory
+$LogFile     = Join-Path $LogDir "$ScriptName`_$(Get-Date -Format 'yyyyMMdd').log" # Daily activity log
+$ErrorLog    = Join-Path $LogDir "$ScriptName`_Errors_$(Get-Date -Format 'yyyyMMdd').log" # Error log
+$SessionFile = Join-Path $OutputRoot 'session.json' # Session state persistence file
 
 foreach ($dir in @($OutputRoot, $LogDir)) {
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null } # Create output folders if missing
 }
 
-function Write-Log {
+function Write-Log { # Writes timestamped message to log file and console
     param([string]$Message, [string]$Level = 'INFO')
     "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$Level] $Message" | Add-Content -Path $LogFile -Encoding UTF8
     if (-not $NonInteractive) {
@@ -53,14 +53,14 @@ function Write-Log {
     }
 }
 
-function Write-ErrorLog {
+function Write-ErrorLog { # Logs errors to dedicated error log file
     param([string]$Message)
     "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$ScriptName] ERROR: $Message" | Add-Content -Path $ErrorLog -Encoding UTF8
     Write-Log -Message $Message -Level 'ERROR'
 }
 
-$_principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $_principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+$_principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent() # Check current user permissions
+if (-not $_principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { # Verify Administrator role
     Write-Host 'ERROR: This script must run as Administrator.' -ForegroundColor Red
     Write-Host 'Right-click PowerShell → Run as Administrator, then try again.' -ForegroundColor Yellow
     exit 1
@@ -70,28 +70,28 @@ if (-not $_principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administr
 
 #region --- Hardware Info ---
 
-$script:TermWidth    = try { [Math]::Min($Host.UI.RawUI.WindowSize.Width, 100) } catch { 80 }
-$script:ComputerName = $env:COMPUTERNAME
-$script:CurrentUser  = $env:USERNAME
+$script:TermWidth    = try { [Math]::Min($Host.UI.RawUI.WindowSize.Width, 100) } catch { 80 } # Terminal width for formatting
+$script:ComputerName = $env:COMPUTERNAME # Device hostname
+$script:CurrentUser  = $env:USERNAME # Current user running script
 
 try {
-    $script:_bios = Get-CimInstance -ClassName Win32_BIOS -ErrorAction SilentlyContinue
+    $script:_bios = Get-CimInstance -ClassName Win32_BIOS -ErrorAction SilentlyContinue # Query system BIOS
     $script:SerialNumber = if ($script:_bios -and $script:_bios.SerialNumber) {
-        $script:_bios.SerialNumber.Trim()
+        $script:_bios.SerialNumber.Trim() # Extract and clean serial number
     } else { 'Unknown' }
 } catch {
-    $script:SerialNumber = 'Unknown'
+    $script:SerialNumber = 'Unknown' # Fallback if BIOS query fails
 }
 
-Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
+Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue # Load for HTML encoding in reports
 
 #endregion
 
 #region --- Step Definitions ---
 
-$script:QuickCheckIndices = @(11, 12, 1, 2, 3, 6, 13, 18, 19, 20, 4, 29)
+$script:QuickCheckIndices = @(11, 12, 1, 2, 3, 6, 13, 18, 19, 20, 4, 29) # 12 core steps for quick scan
 
-$script:PhaseLabels = [ordered]@{
+$script:PhaseLabels = [ordered]@{ # Human-readable phase names
     'ScanCheckBackup' = 'Scan, Check & Backup'
     'Configure'       = 'Configure'
     'InstallUpdate'   = 'Install & Update'
@@ -141,13 +141,13 @@ $script:Steps = @(
 
 #region --- Session Management ---
 
-function Initialize-Session {
+function Initialize-Session { # Creates blank session state
     $steps = @{}
     foreach ($step in $script:Steps) {
-        $steps["$($step.Index)"] = @{ Status = 'not-run'; Timestamp = $null; ExitCode = $null }
+        $steps["$($step.Index)"] = @{ Status = 'not-run'; Timestamp = $null; ExitCode = $null } # Initialize each step as not-run
     }
     return [PSCustomObject]@{
-        StartTime    = (Get-Date -Format 'o')
+        StartTime    = (Get-Date -Format 'o') # Session start timestamp
         ComputerName = $script:ComputerName
         SerialNumber = $script:SerialNumber
         CurrentUser  = $script:CurrentUser
@@ -155,7 +155,7 @@ function Initialize-Session {
     }
 }
 
-function Import-Session {
+function Import-Session { # Loads session from JSON or creates new
     if (-not (Test-Path $SessionFile)) { return Initialize-Session }
     try {
         $raw   = Get-Content $SessionFile -Raw | ConvertFrom-Json
@@ -192,15 +192,15 @@ function Import-Session {
     }
 }
 
-function Save-Session {
+function Save-Session { # Persists session to disk
     try {
-        $script:Session | ConvertTo-Json -Depth 5 | Set-Content $SessionFile -Encoding UTF8
+        $script:Session | ConvertTo-Json -Depth 5 | Set-Content $SessionFile -Encoding UTF8 # Write session JSON
     } catch {
         Write-Host "  Warning: Could not save session.json: $_" -ForegroundColor Yellow
     }
 }
 
-function Update-SessionStep {
+function Update-SessionStep { # Updates step status after execution
     param([int]$Index, [string]$Status, $ExitCode)
     $key = "$Index"
     if (-not $script:Session.Steps.ContainsKey($key)) { $script:Session.Steps[$key] = @{} }
@@ -213,41 +213,85 @@ function Update-SessionStep {
 
 #region --- Display Helpers ---
 
-function Read-MenuKey {
-    $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-    return $key.Character.ToString().ToUpper()
+function Read-MenuKey { # Waits for single keypress
+    $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') # Capture without echo
+    return $key.Character.ToString().ToUpper() # Return uppercase char
 }
 
-$script:Banner = @(
-    '   _   ___ _  _ ___ ___   _____ ___     _   _   _ _____ ___  ___ ___ _    ___ _____  '
-    '  /_\ / __| || | __/ __|  |_  _/ _ \   /_\ | | | |_   _/ _ \| _ \_ _| |  / _ \_   _| '
-    ' / _ \\__ \ __ | _|\__ \    | || (_) | / _ \| |_| | | || (_) |  _/| || |_| (_) || |  '
-    '/_/ \_\___/_||_|___|___/    |_| \___/ /_/ \_\\___/  |_| \___/|_| |___|____\___/ |_|  '
+$script:FullBanner = @( # ASCII art full banner (13 lines)
+   ' █████╗ ███████╗██╗  ██╗███████╗███████╗    ████████╗ ██████╗            '
+   ' ██╔══██╗██╔════╝██║  ██║██╔════╝██╔════╝    ╚══██╔══╝██╔═══██╗          '
+   ' ███████║███████╗███████║█████╗  ███████╗       ██║   ██║   ██║          ' 
+   ' ██╔══██║╚════██║██╔══██║██╔══╝  ╚════██║       ██║   ██║   ██║          ' 
+   ' ██║  ██║███████║██║  ██║███████╗███████║       ██║   ╚██████╔╝          ' 
+   ' ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝       ╚═╝    ╚═════╝           ' 
+   '                                                                         ' 
+   ' █████╗ ██╗   ██╗████████╗ ██████╗ ██████╗ ██╗██╗      ██████╗ ████████╗ '
+   ' ██╔══██╗██║   ██║╚══██╔══╝██╔═══██╗██╔══██╗██║██║     ██╔═══██╗╚══██╔══╝'
+   ' ███████║██║   ██║   ██║   ██║   ██║██████╔╝██║██║     ██║   ██║   ██║   '
+   ' ██╔══██║██║   ██║   ██║   ██║   ██║██╔═══╝ ██║██║     ██║   ██║   ██║   '
+   ' ██║  ██║╚██████╔╝   ██║   ╚██████╔╝██║     ██║███████╗╚██████╔╝   ██║   '
+   ' ╚═╝  ╚═╝ ╚═════╝    ╚═╝    ╚═════╝ ╚═╝     ╚═╝╚══════╝ ╚═════╝    ╚═╝   '
+   '                                                                         '
+   '     Pre-Wipe Preparation Toolkit for Windows Device Wipe & Autopilot    '
+   '          Created by Nathan Sol | NeverNathaniel/AshesToAutopilot                                                          '
 )
 
-function Write-Banner {
-    Write-Host ''
-    Write-Host $script:Banner[0] -ForegroundColor DarkCyan
-    Write-Host $script:Banner[1] -ForegroundColor Cyan
-    Write-Host $script:Banner[2] -ForegroundColor Cyan
-    Write-Host $script:Banner[3] -ForegroundColor White
-    Write-Host ''
+$script:CompactBanner = @( # Compact 4-line banner
+   '  ╔═══════════════════════════════════════════════════════════╗'
+   '  ║   /_\ / __| || | __/ __| |_   _/ _ \                      ║'
+   '  ║  / _ \\__ \ __ | _|\__ \   | || (_) |                     ║'
+   '  ║ /_/_\_\___/_||_|___|___/__ |_| \___/___ _____             ║'
+   '  ║   /_\| | | |_   _/ _ \| _ \_ _| |  / _ \_   _|            ║'
+   '  ║  / _ \ |_| | | || (_) |  _/| || |_| (_) || |              ║'
+   '  ║ /_/ \_\___/  |_| \___/|_| |___|____\___/ |_|              ║'
+   '  ╚═══════════════════════════════════════════════════════════╝'
+)
+
+$script:IsInitialBanner = $true # Track if this is the first display
+
+function Write-BannerFull { # Displays full ASCII banner (13 lines)
+    Write-Host '' # Blank line
+    foreach ($line in $script:FullBanner) {
+        Write-Host $line -ForegroundColor Cyan # Display each line
+    }
+    Write-Host '' # Blank line
 }
 
-function Get-ProgressBarString {
+function Write-Banner { # Displays compact 4-line banner
+    Write-Host '' # Blank line
+    foreach ($line in $script:CompactBanner) {
+        Write-Host $line -ForegroundColor Cyan # Display compact banner
+    }
+    Write-Host '' # Blank line
+}
+
+function Show-InitialBanner { # Shows full banner for 3 seconds, then compact on subsequent loops
+    if ($script:IsInitialBanner) {
+        Write-BannerFull # Display full banner
+        Start-Sleep -Seconds 3 # Wait 3 seconds
+        Clear-Host # Clear screen
+        Write-Banner # Show compact banner
+        $script:IsInitialBanner = $false # Set flag for next iterations
+    } else {
+        Write-Banner # Show compact banner on subsequent calls
+    }
+}
+
+function Get-ProgressBarString { # Renders filled progress bar
     param([int]$Done, [int]$Total, [int]$Width = 24)
     $filled = if ($Total -gt 0) { [Math]::Floor(($Done / $Total) * $Width) } else { 0 }
     $empty  = $Width - $filled
     return ([string]::new([char]0x2588, $filled)) + ([string]::new([char]0x2591, $empty))
 }
 
-function Show-MainMenu {
-    $done  = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
-    $fail  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count
-    $total = $script:Steps.Count
+function Show-MainMenu { # Displays main menu with progress
+    $done  = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count # Count completed steps
+    $fail  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count # Count failed steps
+    $total = $script:Steps.Count # Total step count
 
-    Clear-Host
-    Write-Banner
+    Clear-Host # Clear screen
+    Show-InitialBanner # Show banner (full on first run, compact after)
 
     $inner   = 56
     $bar     = '═' * ($inner + 2)
@@ -280,20 +324,20 @@ function Show-MainMenu {
     Write-Host '  Press a key › ' -ForegroundColor DarkCyan -NoNewline
 }
 
-function Write-RunHeader {
-    param([string]$Title, [string]$Sub, [int]$StepCount)
-    Clear-Host
-    Write-Banner
-    $inner = 62
-    $bar   = '═' * ($inner + 2)
-    Write-Host "  ╔$bar╗" -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f "  $Title".PadRight($inner)) -ForegroundColor White
-    Write-Host ("  ║ {0} ║" -f "  $Sub  ·  $StepCount steps".PadRight($inner)) -ForegroundColor DarkGray
-    Write-Host "  ╚$bar╝" -ForegroundColor Cyan
-    Write-Host ''
+function Write-RunHeader { # Displays run mode header
+    param([string]$Title, [string]$Sub, [int]$StepCount) # Title, subtitle, step count
+    Clear-Host # Clear screen
+    Write-BannerFull # Show full banner for run headers
+    $inner = 62 # Box inner width
+    $bar   = '═' * ($inner + 2) # Box border line
+    Write-Host "  ╔$bar╗" -ForegroundColor Cyan # Top border
+    Write-Host ("  ║ {0} ║" -f "  $Title".PadRight($inner)) -ForegroundColor White # Title line
+    Write-Host ("  ║ {0} ║" -f "  $Sub  ·  $StepCount steps".PadRight($inner)) -ForegroundColor DarkGray # Subtitle line
+    Write-Host "  ╚$bar╝" -ForegroundColor Cyan # Bottom border
+    Write-Host '' # Blank line
 }
 
-function Write-StepLine {
+function Write-StepLine { # Writes step header during run
     param([int]$Num, [int]$Total, [PSCustomObject]$Step)
     $label = " ── [$Num/$Total]  $($Step.DisplayName) "
     $dash  = '─' * [Math]::Max(2, 68 - $label.Length)
@@ -301,12 +345,12 @@ function Write-StepLine {
     Write-Host "  $label$dash" -ForegroundColor DarkCyan
 }
 
-function Write-StepResultLine {
-    param([hashtable]$Result)
-    $elapsed = if ($Result.Elapsed) { '{0:mm\:ss}' -f $Result.Elapsed } else { '--:--' }
-    $vTag    = switch ($Result.Verdict) { 'PASS' { '[OK]' } 'WARN' { '[!!]' } 'FAIL' { '[XX]' } default { '[--]' } }
-    $vColor  = switch ($Result.Verdict) { 'PASS' { 'Green' } 'WARN' { 'Yellow' } 'FAIL' { 'Red' } default { 'Gray' } }
-    $sColor  = switch ($Result.Status)  { 'DONE' { 'White' } 'FAIL' { 'Red' } 'SKIP' { 'Yellow' } default { 'Gray' } }
+function Write-StepResultLine { # Displays step execution result
+    param([hashtable]$Result) # Result hashtable from step execution
+    $elapsed = if ($Result.Elapsed) { '{0:mm\:ss}' -f $Result.Elapsed } else { '--:--' } # Format elapsed time
+    $vTag    = switch ($Result.Verdict) { 'PASS' { '[OK]' } 'WARN' { '[!!]' } 'FAIL' { '[XX]' } default { '[--]' } } # Verdict icon
+    $vColor  = switch ($Result.Verdict) { 'PASS' { 'Green' } 'WARN' { 'Yellow' } 'FAIL' { 'Red' } default { 'Gray' } } # Verdict color
+    $sColor  = switch ($Result.Status)  { 'DONE' { 'White' } 'FAIL' { 'Red' } 'SKIP' { 'Yellow' } default { 'Gray' } } # Status color
 
     Write-Host -NoNewline "  "
     Write-Host -NoNewline $vTag                -ForegroundColor $vColor
@@ -430,12 +474,12 @@ function Show-StepListTable {
 
 #region --- Verdict Evaluation ---
 
-$script:PrimaryProfile = $null
+$script:PrimaryProfile = $null # Primary user profile (identified for KFM checks)
 try {
-    $vpSkipSIDs  = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
-    $vpSkipNames = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
-    $vpCutoff    = (Get-Date).AddDays(-30)
-    $primaryProfileObj = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
+    $vpSkipSIDs  = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20') # System account SIDs to skip
+    $vpSkipNames = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest') # System/service account names
+    $vpCutoff    = (Get-Date).AddDays(-30) # Profile age threshold
+    $primaryProfileObj = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop | # Query user profiles
         Where-Object { -not $_.Special -and $vpSkipSIDs -notcontains $_.SID } |
         Where-Object { $vpSkipNames -notcontains (Split-Path $_.LocalPath -Leaf).ToLower() } |
         Where-Object { $_.LastUseTime -and $_.LastUseTime -ge $vpCutoff } |
@@ -448,11 +492,11 @@ try {
     Write-Log "Could not determine primary profile: $_" -Level 'WARN'
 }
 
-function Get-StepSummary {
-    param([PSCustomObject]$Parsed, [string]$ScriptFile)
-    if ($null -eq $Parsed) { return 'No output' }
+function Get-StepSummary { # Generates human-readable summary from step output
+    param([PSCustomObject]$Parsed, [string]$ScriptFile) # Parsed JSON output and script path
+    if ($null -eq $Parsed) { return 'No output' } # Handle null output
     try {
-        switch -Wildcard ($ScriptFile) {
+        switch -Wildcard ($ScriptFile) { # Match script and extract key metrics
             '*Test-OneDriveKFM*' {
                 if (-not $Parsed.Results) { return 'No profiles' }
                 $enabled = @($Parsed.Results | Where-Object { $_.KFM_Desktop -eq 'Enabled' -and $_.KFM_Documents -eq 'Enabled' -and $_.KFM_Pictures -eq 'Enabled' }).Count
@@ -542,12 +586,12 @@ function Get-StepSummary {
     } catch { return 'Parse error' }
 }
 
-function Get-StepVerdict {
-    param([PSCustomObject]$Parsed, [string]$ScriptFile, [string]$Status)
+function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
+    param([PSCustomObject]$Parsed, [string]$ScriptFile, [string]$Status) # Parsed output, script path, execution status
 
-    if ($Status -eq 'FAIL') { return @{ Verdict = 'FAIL'; Reason = 'Script execution failed' } }
-    if ($Status -eq 'SKIP') { return @{ Verdict = 'WARN'; Reason = 'Step was skipped' } }
-    if ($null  -eq $Parsed) { return @{ Verdict = 'WARN'; Reason = 'No output to evaluate' } }
+    if ($Status -eq 'FAIL') { return @{ Verdict = 'FAIL'; Reason = 'Script execution failed' } } # Execution error = fail
+    if ($Status -eq 'SKIP') { return @{ Verdict = 'WARN'; Reason = 'Step was skipped' } } # Skipped step = warn
+    if ($null  -eq $Parsed) { return @{ Verdict = 'WARN'; Reason = 'No output to evaluate' } } # No output = warn
 
     try {
         switch -Wildcard ($ScriptFile) {
@@ -697,12 +741,12 @@ function Get-StepVerdict {
 
 #region --- HTML Report ---
 
-function Get-HtmlTable {
-    param($Parsed, [string]$ScriptFile)
-    if ($null -eq $Parsed) { return '' }
-    $rows = @(); $cols = @()
+function Get-HtmlTable { # Extracts data table from step output
+    param($Parsed, [string]$ScriptFile) # Parsed JSON and script path
+    if ($null -eq $Parsed) { return '' } # Return empty if no parsed data
+    $rows = @(); $cols = @() # Initialize rows and column headers
     try {
-        switch -Wildcard ($ScriptFile) {
+        switch -Wildcard ($ScriptFile) { # Match script type and extract table
             '*Test-OneDriveKFM*' {
                 if ($Parsed.Results) { $cols = @('Profile','KFM_Desktop','KFM_Documents','KFM_Pictures','SyncStatus'); $rows = @($Parsed.Results) }
             }
@@ -790,12 +834,12 @@ function Get-HtmlTable {
     return $html.ToString()
 }
 
-function Export-HtmlReport {
-    param([PSCustomObject[]]$ResultSet, [string]$RunLabel = 'Run')
+function Export-HtmlReport { # Generates styled HTML report from results
+    param([PSCustomObject[]]$ResultSet, [string]$RunLabel = 'Run') # Result set and run label
 
-    $stamp    = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $htmlPath = Join-Path $OutputRoot "PreWipeReport_$($script:ComputerName)_$stamp.html"
-    $now      = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $stamp    = Get-Date -Format 'yyyyMMdd-HHmmss' # Timestamp for filename
+    $htmlPath = Join-Path $OutputRoot "PreWipeReport_$($script:ComputerName)_$stamp.html" # Output file path
+    $now      = Get-Date -Format 'yyyy-MM-dd HH:mm:ss' # Current timestamp
 
     $done  = @($ResultSet | Where-Object { $_.Status -eq 'DONE' }).Count
     $fail  = @($ResultSet | Where-Object { $_.Status -eq 'FAIL' }).Count
@@ -896,35 +940,35 @@ function Export-HtmlReport {
 
 #region --- Step Execution ---
 
-function Invoke-StepCapture {
-    param([PSCustomObject]$Step)
+function Invoke-StepCapture { # Executes step and captures output
+    param([PSCustomObject]$Step) # Step object to execute
 
-    $fullPath = Join-Path $PSScriptRoot $Step.ScriptPath
+    $fullPath = Join-Path $PSScriptRoot $Step.ScriptPath # Resolve full script path
 
     if (-not (Test-Path $fullPath)) {
-        Write-Log "Script not found, skipping: $($Step.ScriptPath)" -Level 'WARN'
-        return @{ Status = 'SKIP'; Parsed = $null; Summary = 'Script not found'; Elapsed = $null; Verdict = 'WARN'; VerdictReason = 'Step was skipped — script missing' }
+        Write-Log "Script not found, skipping: $($Step.ScriptPath)" -Level 'WARN' # Log missing script
+        return @{ Status = 'SKIP'; Parsed = $null; Summary = 'Script not found'; Elapsed = $null; Verdict = 'WARN'; VerdictReason = 'Step was skipped — script missing' } # Return skip
     }
 
-    $LASTEXITCODE = 0
-    $exitCode = 0
-    $parsed   = $null
+    $LASTEXITCODE = 0 # Reset exit code
+    $exitCode = 0 # Initialize exit code
+    $parsed   = $null # Initialize parsed output
 
-    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $sw = [System.Diagnostics.Stopwatch]::StartNew() # Start timer
     try {
-        $jsonRaw  = & $fullPath -NonInteractive 2>&1 | Out-String
-        $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        $jsonRaw  = & $fullPath -NonInteractive 2>&1 | Out-String # Execute script and capture output
+        $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 } # Capture exit code
     } catch {
-        $sw.Stop()
-        Write-ErrorLog "Step $($Step.Index) ($($Step.DisplayName)) threw: $_"
-        return @{ Status = 'FAIL'; Parsed = $null; Summary = "Error: $_"; Elapsed = $sw.Elapsed; Verdict = 'FAIL'; VerdictReason = 'Script execution failed' }
+        $sw.Stop() # Stop timer
+        Write-ErrorLog "Step $($Step.Index) ($($Step.DisplayName)) threw: $_" # Log exception
+        return @{ Status = 'FAIL'; Parsed = $null; Summary = "Error: $_"; Elapsed = $sw.Elapsed; Verdict = 'FAIL'; VerdictReason = 'Script execution failed' } # Return failure
     }
-    $sw.Stop()
+    $sw.Stop() # Stop timer
 
     try {
-        if ($jsonRaw.Trim()) { $parsed = $jsonRaw | ConvertFrom-Json }
+        if ($jsonRaw.Trim()) { $parsed = $jsonRaw | ConvertFrom-Json } # Parse JSON output
     } catch {
-        Write-Log "Could not parse JSON from $($Step.DisplayName)" -Level 'WARN'
+        Write-Log "Could not parse JSON from $($Step.DisplayName)" -Level 'WARN' # Log parse error
     }
 
     $status  = if ($exitCode -eq 0) { 'DONE' } else { 'FAIL' }
@@ -943,12 +987,12 @@ function Invoke-StepCapture {
     }
 }
 
-function Invoke-StepInteractive {
-    param([PSCustomObject]$Step)
+function Invoke-StepInteractive { # Runs step interactively with output
+    param([PSCustomObject]$Step) # Step to execute
 
-    $fullPath = Join-Path $PSScriptRoot $Step.ScriptPath
-    Clear-Host
-    Write-Banner
+    $fullPath = Join-Path $PSScriptRoot $Step.ScriptPath # Resolve full path
+    Clear-Host # Clear screen
+    Write-Banner # Display banner
 
     $inner = 62; $bar = '═' * ($inner + 2)
     Write-Host "  ╔$bar╗" -ForegroundColor Cyan
@@ -1007,29 +1051,29 @@ function Invoke-StepInteractive {
 
 #region --- Run Engine ---
 
-function Invoke-RunSteps {
+function Invoke-RunSteps { # Executes batch of steps and collects results
     param(
-        [PSCustomObject[]]$StepsToRun,
-        [string]$RunLabel,
-        [string]$RunSub
+        [PSCustomObject[]]$StepsToRun, # Steps to execute
+        [string]$RunLabel, # Run mode label (e.g., 'Quick Check')
+        [string]$RunSub # Subtitle description
     )
 
-    $total      = $StepsToRun.Count
-    $counts     = @{ DONE = 0; FAIL = 0; SKIP = 0 }
-    $runResults = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $total      = $StepsToRun.Count # Total steps in run
+    $counts     = @{ DONE = 0; FAIL = 0; SKIP = 0 } # Result counters
+    $runResults = [System.Collections.Generic.List[PSCustomObject]]::new() # Collect all results
 
     Write-RunHeader -Title $RunLabel -Sub $RunSub -StepCount $total
 
-    $i = 0
+    $i = 0 # Step counter
     foreach ($step in $StepsToRun) {
-        $i++
-        Write-StepLine -Num $i -Total $total -Step $step
+        $i++ # Increment counter
+        Write-StepLine -Num $i -Total $total -Step $step # Display step header
 
-        $result = Invoke-StepCapture -Step $step
+        $result = Invoke-StepCapture -Step $step # Execute step and capture output
 
-        $step.Status = $result.Status
-        Update-SessionStep -Index $step.Index -Status $step.Status -ExitCode ($result.Status -eq 'DONE' ? 0 : 1)
-        Save-Session
+        $step.Status = $result.Status # Update step status
+        Update-SessionStep -Index $step.Index -Status $step.Status -ExitCode ($result.Status -eq 'DONE' ? 0 : 1) # Update session
+        Save-Session # Persist session state
 
         switch ($step.Status) {
             'DONE' { $counts.DONE++ }
@@ -1055,26 +1099,26 @@ function Invoke-RunSteps {
         if ($i -lt $total) { Start-Sleep -Seconds 2 }
     }
 
-    $resultArray = $runResults.ToArray()
-    Show-RunSummaryInline -Results $resultArray
-    $null = Export-HtmlReport -ResultSet $resultArray -RunLabel $RunLabel
+    $resultArray = $runResults.ToArray() # Convert to array
+    Show-RunSummaryInline -Results $resultArray # Display inline summary
+    $null = Export-HtmlReport -ResultSet $resultArray -RunLabel $RunLabel # Generate HTML report
 
-    Write-Host ''
+    Write-Host '' # Blank line
     Write-Host '  Press any key to return to menu...' -ForegroundColor DarkGray
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') # Wait for keypress
 
-    return $resultArray
+    return $resultArray # Return results
 }
 
 #endregion
 
 #region --- Workflow Actions ---
 
-function Invoke-QuickCheck {
-    $stepsToRun = @($script:QuickCheckIndices | ForEach-Object {
-        $idx = $_
-        $script:Steps | Where-Object { $_.Index -eq $idx } | Select-Object -First 1
-    } | Where-Object { $_ })
+function Invoke-QuickCheck { # Runs 12 core steps
+    $stepsToRun = @($script:QuickCheckIndices | ForEach-Object { # Resolve step objects
+        $idx = $_ # Get index
+        $script:Steps | Where-Object { $_.Index -eq $idx } | Select-Object -First 1 # Find step
+    } | Where-Object { $_ }) # Filter valid
 
     Write-Host ''
     Write-Host '  Quick Check will run the following 12 steps:' -ForegroundColor Cyan
@@ -1103,14 +1147,14 @@ function Invoke-FullPrep {
     $null = Invoke-RunSteps -StepsToRun $script:Steps -RunLabel 'Full Prep' -RunSub 'All 31 steps in sequence'
 }
 
-function Invoke-SingleStep {
+function Invoke-SingleStep { # Menu to run one step interactively
     while ($true) {
-        Clear-Host
-        Write-Banner
-        Show-StepListTable -Title 'RUN SINGLE STEP — SELECT BY NUMBER'
+        Clear-Host # Clear screen
+        Write-Banner # Show banner
+        Show-StepListTable -Title 'RUN SINGLE STEP — SELECT BY NUMBER' # Display all steps
 
         Write-Host '  Enter step number (0 to cancel): ' -ForegroundColor DarkCyan -NoNewline
-        $input = Read-Host
+        $input = Read-Host # Get user input
         if ($input -eq '0' -or $input -eq '') { return }
 
         $num = 0
@@ -1126,17 +1170,17 @@ function Invoke-SingleStep {
     }
 }
 
-function Invoke-CustomRun {
-    Clear-Host
-    Write-Banner
-    Show-StepListTable -Title 'CUSTOM RUN — SELECT STEPS'
+function Invoke-CustomRun { # Menu to select custom step subset
+    Clear-Host # Clear screen
+    Write-Banner # Show banner
+    Show-StepListTable -Title 'CUSTOM RUN — SELECT STEPS' # Display all steps
 
-    Write-Host ''
+    Write-Host '' # Blank line
     Write-Host '  Enter step numbers separated by commas (e.g. 1,3,11,12)' -ForegroundColor Gray
     Write-Host '  Enter 0 or leave blank to cancel.' -ForegroundColor DarkGray
-    Write-Host ''
+    Write-Host '' # Blank line
     Write-Host '  Steps: ' -ForegroundColor DarkCyan -NoNewline
-    $input = Read-Host
+    $input = Read-Host # Get user input
 
     if ($input -eq '0' -or $input -eq '') { return }
 
@@ -1172,14 +1216,14 @@ function Invoke-CustomRun {
     $null = Invoke-RunSteps -StepsToRun $stepsToRun -RunLabel 'Custom Run' -RunSub "Steps: $($indices -join ', ')"
 }
 
-function Show-SessionSummary {
-    Clear-Host
-    Write-Banner
+function Show-SessionSummary { # Displays session progress overview
+    Clear-Host # Clear screen
+    Write-Banner # Show banner
 
-    $done  = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
-    $fail  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count
-    $skip  = @($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
-    $norun = @($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
+    $done  = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count # Count completed
+    $fail  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count # Count failed
+    $skip  = @($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count # Count skipped
+    $norun = @($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count # Count not-run
 
     $progBar = Get-ProgressBarString -Done $done -Total $script:Steps.Count -Width 32
 
@@ -1221,16 +1265,16 @@ function Show-SessionSummary {
     $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 }
 
-function Export-SessionReport {
-    Clear-Host
-    Write-Host ''
+function Export-SessionReport { # Exports session as JSON and text
+    Clear-Host # Clear screen
+    Write-Host '' # Blank line
     Write-Host '  Exporting Session Report...' -ForegroundColor Cyan
-    Write-Host ''
+    Write-Host '' # Blank line
 
-    $stamp    = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $baseName = "PreWipeReport_$($script:ComputerName)_$stamp"
-    $jsonPath = Join-Path $OutputRoot "$baseName.json"
-    $txtPath  = Join-Path $OutputRoot "$baseName.txt"
+    $stamp    = Get-Date -Format 'yyyyMMdd-HHmmss' # Timestamp for filename
+    $baseName = "PreWipeReport_$($script:ComputerName)_$stamp" # Base filename
+    $jsonPath = Join-Path $OutputRoot "$baseName.json" # JSON file path
+    $txtPath  = Join-Path $OutputRoot "$baseName.txt" # Text file path
 
     try {
         $script:Session | ConvertTo-Json -Depth 5 | Set-Content $jsonPath -Encoding UTF8 -Force
@@ -1280,20 +1324,20 @@ function Export-SessionReport {
     $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 }
 
-function Invoke-ResetSession {
-    Clear-Host
-    Write-Host ''
+function Invoke-ResetSession { # Clears all progress and deletes session file
+    Clear-Host # Clear screen
+    Write-Host '' # Blank line
     Write-Host '  Reset Session' -ForegroundColor White
     Write-Host '  This clears all step statuses and deletes session.json.' -ForegroundColor Gray
-    Write-Host ''
+    Write-Host '' # Blank line
     Write-Host '  [Y] Reset    [N] Cancel  ' -ForegroundColor DarkCyan -NoNewline
-    $key = Read-MenuKey
-    Write-Host ''
-    if ($key -ne 'Y') { return }
+    $key = Read-MenuKey # Get confirmation
+    Write-Host '' # Blank line
+    if ($key -ne 'Y') { return } # Cancel if not confirmed
 
-    foreach ($step in $script:Steps) { $step.Status = 'not-run' }
-    $script:Session = Initialize-Session
-    if (Test-Path $SessionFile) { Remove-Item $SessionFile -Force }
+    foreach ($step in $script:Steps) { $step.Status = 'not-run' } # Reset all steps
+    $script:Session = Initialize-Session # Create new session
+    if (Test-Path $SessionFile) { Remove-Item $SessionFile -Force } # Delete session file
 
     Write-Host ''
     Write-Host '  Session reset. All steps marked as not-run.' -ForegroundColor Green
@@ -1304,57 +1348,57 @@ function Invoke-ResetSession {
 
 #region --- Main Loop ---
 
-$script:Session = Import-Session
+$script:Session = Import-Session # Load or create session
 
-if ($NonInteractive) {
-    [PSCustomObject]@{
-        Timestamp     = (Get-Date -Format 'o')
+if ($NonInteractive) { # Non-interactive JSON output mode
+    [PSCustomObject]@{ # Build output object
+        Timestamp     = (Get-Date -Format 'o') # Current time
         ScriptName    = $ScriptName
         ComputerName  = $script:ComputerName
         SerialNumber  = $script:SerialNumber
         CurrentUser   = $script:CurrentUser
         SessionFile   = $SessionFile
-        SessionExists = (Test-Path $SessionFile)
+        SessionExists = (Test-Path $SessionFile) # Check if session file exists
         Steps         = $script:Steps | Select-Object Index, Phase, DisplayName, Status, ScriptPath
-        Summary       = [PSCustomObject]@{
+        Summary       = [PSCustomObject]@{ # Result counters
             Total   = $script:Steps.Count
             Done    = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count
             Failed  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count
             Skipped = @($script:Steps | Where-Object { $_.Status -eq 'SKIP' }).Count
             NotRun  = @($script:Steps | Where-Object { $_.Status -eq 'not-run' }).Count
         }
-    } | ConvertTo-Json -Depth 5
+    } | ConvertTo-Json -Depth 5 # Output JSON and exit
     exit 0
 }
 
 try {
-    $running = $true
-    while ($running) {
-        Show-MainMenu
-        $key = Read-MenuKey
-        Write-Host $key -ForegroundColor White
-        Start-Sleep -Milliseconds 120
+    $running = $true # Main loop flag
+    while ($running) { # Main interactive loop
+        Show-MainMenu # Display menu
+        $key = Read-MenuKey # Get user key
+        Write-Host $key -ForegroundColor White # Echo key
+        Start-Sleep -Milliseconds 120 # Brief delay
 
-        switch ($key) {
-            '1' { Invoke-QuickCheck }
-            '2' { Invoke-FullPrep }
-            '3' { Invoke-SingleStep }
-            '4' { Invoke-CustomRun }
-            '5' { Show-SessionSummary }
-            '6' { Export-SessionReport }
-            '7' { Invoke-ResetSession }
-            'Q' { $running = $false }
+        switch ($key) { # Route key press to action
+            '1' { Invoke-QuickCheck } # Run quick check
+            '2' { Invoke-FullPrep } # Run full prep
+            '3' { Invoke-SingleStep } # Run single step
+            '4' { Invoke-CustomRun } # Run custom selection
+            '5' { Show-SessionSummary } # Show progress
+            '6' { Export-SessionReport } # Export session
+            '7' { Invoke-ResetSession } # Reset progress
+            'Q' { $running = $false } # Quit
         }
     }
 } catch {
-    Write-ErrorLog "Unhandled exception in main loop: $_"
+    Write-ErrorLog "Unhandled exception in main loop: $_" # Log fatal error
     Write-Host "  FATAL: Unexpected error — check $ErrorLog" -ForegroundColor Red
     exit 1
 }
 
-Clear-Host
-Write-Banner
-Write-Host '  Session ended. Output saved to C:\PreWipeOutput' -ForegroundColor DarkCyan
-Write-Host ''
+Clear-Host # Clear screen
+Write-Banner # Display banner
+Write-Host '  Session ended. Output saved to C:\PreWipeOutput' -ForegroundColor DarkCyan # Farewell message
+Write-Host '' # Blank line
 
 #endregion
