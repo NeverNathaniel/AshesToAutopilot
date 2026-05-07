@@ -131,7 +131,9 @@ try {
             $Result.IntelRSTDetected = $true
             $Result.Notes += "Intel RST service detected as running"
         }
-    } catch {}
+    } catch {
+        Write-ErrorLog "RST detection failed: $_"
+    }
 
     # Registry check for SATA mode
     try {
@@ -151,7 +153,9 @@ try {
                 $Result.Notes += "storahci driver active - AHCI mode"
             }
         }
-    } catch {}
+    } catch {
+        Write-ErrorLog "NVMe detection failed: $_"
+    }
 
     $Result.StorageMode = $storageMode
     Write-Log "Storage mode detected: $storageMode"
