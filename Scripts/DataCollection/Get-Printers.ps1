@@ -118,7 +118,7 @@ try {
 }
 
 $DefaultPrinter = $PrinterList | Where-Object { $_.IsDefault } | Select-Object -First 1
-Write-Log "Default printer: $($DefaultPrinter.Name ?? 'None found')"
+Write-Log "Default printer: $(if ($null -ne $DefaultPrinter.Name) { $DefaultPrinter.Name } else { 'None found' })"
 #endregion
 
 #region --- Output ---
@@ -141,7 +141,7 @@ if ($NonInteractive) {
     } else {
         $PrinterList | Format-Table -AutoSize -Property Name, Type, PortName, DriverName, IsDefault, Status | Out-String | Write-Host
     }
-    Write-Host "Default: $($DefaultPrinter.Name ?? 'None')" -ForegroundColor Cyan
+    Write-Host "Default: $(if ($null -ne $DefaultPrinter.Name) { $DefaultPrinter.Name } else { 'None' })" -ForegroundColor Cyan
     Write-Host "Report: $OutputRoot\Logs\Printers-Report.json"
     Write-Host ""
 }
