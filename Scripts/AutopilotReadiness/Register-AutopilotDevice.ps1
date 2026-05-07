@@ -148,7 +148,6 @@ try {
         $Result.HardwareHash = if ($hashEntry.'Hardware Hash') { "PRESENT (length: $($hashEntry.'Hardware Hash'.Length))" } else { 'Not collected' }
         Write-Log "Hardware hash collected. CSV saved to $csvPath"
         $Result.UploadStatus = 'HashCollected'
-        $Result.Success      = $true
     } else {
         throw "Output CSV not created at $csvPath"
     }
@@ -183,10 +182,9 @@ try {
 } catch {
     $errMsg = $_.ToString()
     Write-ErrorLog "Autopilot upload failed: $errMsg"
-    # Upload failure is non-fatal if hash was collected
     $Result.UploadStatus   = 'UploadFailed'
     $Result.UploadResponse = $errMsg
-    # Hash was collected, so partial success
+    $Result.Success        = $false
     $Result.Error = "Upload failed (hash saved to $csvPath): $errMsg"
 }
 #endregion
