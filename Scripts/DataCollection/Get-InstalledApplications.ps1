@@ -30,33 +30,9 @@ param(
 
 #region --- Init ---
 $ScriptName = 'Get-InstalledApplications'
-$OutputRoot = 'C:\PreWipeOutput'
-$LogDir     = "$OutputRoot\Logs"
-$LogFile    = "$LogDir\$ScriptName.log"
-$ErrorLog   = "$OutputRoot\errors.log"
-
-if (-not (Test-Path $OutputRoot)) { New-Item -Path $OutputRoot -ItemType Directory -Force | Out-Null }
-if (-not (Test-Path $LogDir))     { New-Item -Path $LogDir     -ItemType Directory -Force | Out-Null }
-
-function Write-Log {
-    param([string]$Message, [string]$Level = 'INFO')
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [$Level] $Message" | Tee-Object -FilePath $LogFile -Append | Out-Null
-    if (-not $NonInteractive) { Write-Host "$ts [$Level] $Message" }
-}
-
-function Write-ErrorLog {
-    param([string]$Message)
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [ERROR] [$ScriptName] $Message" | Out-File -FilePath $ErrorLog -Append
-    Write-Log $Message 'ERROR'
-}
-
-# Admin check
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "ERROR: This script must be run as Administrator." -ForegroundColor Red
-    exit 1
-}
+. (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+$LogFile = "$LogDir\$ScriptName.log"
+if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
 
 #region --- Noise Filters ---
