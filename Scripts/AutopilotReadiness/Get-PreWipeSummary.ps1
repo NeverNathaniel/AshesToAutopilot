@@ -138,8 +138,16 @@ if ($blEntry -and $blEntry.Found) {
 $syncEntry = $ScriptResults | Where-Object { $_.Script -eq 'Test-OneDriveSyncStatus' }
 if ($syncEntry -and $syncEntry.Found) {
     $syncJson = Get-Content (Join-Path $LogDir 'OneDriveSyncStatus-Report.json') -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
-    if ($syncJson -and $syncJson.OverallVerdict -eq 'NOT_SAFE') {
-        $Blockers += "OneDrive sync is NOT complete for all profiles"
+    if ($syncJson) {
+        if ($syncJson.OverallVerdict -eq 'NO_PROFILES') {
+            $Blockers += "OneDrive sync could not be verified — no active profiles found"
+        } elseif ($syncJson.Profiles) {
+            $unsafeProfiles = @($syncJson.Profiles | Where-Object { -not $_.SafeToWipe })
+            if ($unsafeProfiles.Count -gt 0) {
+                $names = ($unsafeProfiles | ForEach-Object { $_.Profile }) -join ', '
+                $Blockers += "OneDrive sync is NOT complete for: $names"
+            }
+        }
     }
 } elseif (-not $syncEntry -or -not $syncEntry.Found) {
     $Blockers += "OneDrive sync status has not been checked"
