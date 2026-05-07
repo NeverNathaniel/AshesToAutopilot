@@ -131,7 +131,7 @@ foreach ($Profile in $Profiles) {
             Write-Log "Calculating size of $DownloadsDir ..."
             $items = Get-ChildItem -Path $DownloadsDir -Recurse -Force -ErrorAction SilentlyContinue
             $size  = ($items | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum).Sum
-            $ProfileResult.SizeBytes = [long]($size ?? 0)
+            $ProfileResult.SizeBytes = [long](if ($null -ne $size) { $size } else { 0 })
             $ProfileResult.SizeHuman = Format-Bytes $ProfileResult.SizeBytes
             $ProfileResult.FileCount = ($items | Where-Object { -not $_.PSIsContainer }).Count
             Write-Log "$ProfileName Downloads: $($ProfileResult.SizeHuman) ($($ProfileResult.FileCount) files)"
