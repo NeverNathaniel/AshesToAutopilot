@@ -215,7 +215,9 @@ function Search-UnbackedFiles {
                     }
                 }
             }
-        } catch {}
+        } catch {
+            Write-ErrorLog "Failed to enumerate file attributes in profile loop: $_"
+        }
     }
 
     return $findings
