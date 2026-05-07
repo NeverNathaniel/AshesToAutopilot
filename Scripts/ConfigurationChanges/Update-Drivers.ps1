@@ -141,7 +141,7 @@ try {
 
     $proc     = Start-Process -FilePath $DCUExe -ArgumentList $args -Wait -PassThru -NoNewWindow
     $exitCode  = $proc.ExitCode
-    $meaning   = $ExitCodeMap[$exitCode] ?? "ExitCode $exitCode (unknown)"
+    $meaning   = if ($ExitCodeMap.ContainsKey($exitCode)) { $ExitCodeMap[$exitCode] } else { "ExitCode $exitCode (unknown)" }
 
     $Result.ExitCode    = $exitCode
     $Result.ExitMeaning = $meaning
