@@ -160,7 +160,7 @@ try {
 
 #region --- Output ---
 $allEscrowed = -not ($Results | Where-Object {
-    $_.EscrowStatus -in @('EscrowFailed', 'NoRecoveryKey')
+    $_.EscrowStatus -in @('EscrowFailed', 'NoRecoveryKey', 'Error')
 })
 
 $Summary = [PSCustomObject]@{
