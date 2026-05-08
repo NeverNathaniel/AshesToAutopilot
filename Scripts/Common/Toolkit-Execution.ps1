@@ -4,7 +4,7 @@
 function Invoke-StepCapture { # Executes step and captures output
     param([PSCustomObject]$Step) # Step object to execute
 
-    $fullPath = Join-Path $PSScriptRoot $Step.ScriptPath # Resolve full script path
+    $fullPath = Join-Path $script:ToolkitRoot $Step.ScriptPath # Resolve full script path
 
     if (-not (Test-Path $fullPath)) {
         Write-Log "Script not found, skipping: $($Step.ScriptPath)" -Level 'WARN' # Log missing script
@@ -51,7 +51,7 @@ function Invoke-StepCapture { # Executes step and captures output
 function Invoke-StepInteractive { # Runs step interactively with output
     param([PSCustomObject]$Step) # Step to execute
 
-    $fullPath = Join-Path $PSScriptRoot $Step.ScriptPath # Resolve full path
+    $fullPath = Join-Path $script:ToolkitRoot $Step.ScriptPath # Resolve full path
     Clear-Host # Clear screen
     Write-Banner # Display banner
 

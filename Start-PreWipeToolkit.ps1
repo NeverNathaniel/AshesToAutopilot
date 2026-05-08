@@ -31,6 +31,7 @@
 [CmdletBinding()]
 param([switch]$NonInteractive) # Non-interactive mode emits JSON to stdout only
 
+$script:ToolkitRoot = $PSScriptRoot
 . (Join-Path $PSScriptRoot 'Scripts\Common\Toolkit-UI.ps1')
 . (Join-Path $PSScriptRoot 'Scripts\Common\Toolkit-Report.ps1')
 . (Join-Path $PSScriptRoot 'Scripts\Common\Toolkit-Execution.ps1')
