@@ -1003,21 +1003,60 @@ function Export-HtmlReport { # Generates styled HTML report from results
     $null = $sb.AppendLine("</div>")
     $null = $sb.AppendLine("</div>")
 
-    foreach ($r in $ResultSet) {
-        $sc   = switch ($r.Status)  { 'DONE' { 'done' } 'FAIL' { 'fail' } 'SKIP' { 'skip' } default { 'skip' } }
-        $vc   = switch ($r.Verdict) { 'PASS' { 'pass' } 'WARN' { 'warn' } 'FAIL' { 'fail' } default { 'pass' } }
-        $vl   = switch ($r.Verdict) { 'PASS' { '&#10003; Pass' } 'WARN' { '&#9888; Warn' } 'FAIL' { '&#10007; Fail' } default { '' } }
-        $vrCol= switch ($r.Verdict) { 'PASS' { 'var(--pass)' } 'WARN' { '#b45309' } 'FAIL' { 'var(--fail)' } default { 'var(--text)' } }
+    $lastPhase   = ''
+    $resultIndex = @{}
+    foreach ($r in $ResultSet) { $resultIndex["$($r.Index)"] = $r }
 
-        $null = $sb.AppendLine("<div class='card'><div class='card-head'><span class='step-name'>$($r.Index). $([System.Web.HttpUtility]::HtmlEncode($r.DisplayName))</span>")
-        $null = $sb.AppendLine("<span><span class='status $sc'>$($r.Status)</span><span class='verdict $vc' title='$([System.Web.HttpUtility]::HtmlEncode($r.VerdictReason))'>$vl</span></span></div>")
-        $null = $sb.AppendLine("<div class='card-body'><div class='summary'>$([System.Web.HttpUtility]::HtmlEncode($r.Summary))</div>")
-        if ($r.VerdictReason) {
-            $null = $sb.AppendLine("<div class='summary' style='margin-top:4px;font-weight:600;color:$vrCol'>$([System.Web.HttpUtility]::HtmlEncode($r.VerdictReason))</div>")
+    foreach ($step in $script:Steps) {
+        if ($step.Phase -ne $lastPhase) {
+            $lastPhase = $step.Phase
+            $pl = Get-PhaseLabel $lastPhase
+            $null = $sb.AppendLine("<div class='phase-header' id='phase-$($lastPhase.ToLower())'>&#8212; $([System.Web.HttpUtility]::HtmlEncode($pl))</div>")
         }
-        $tableHtml = Get-HtmlTable -Parsed $r.ParsedData -ScriptFile $r.ScriptPath
-        if ($tableHtml) { $null = $sb.AppendLine($tableHtml) }
-        $null = $sb.AppendLine('</div></div>')
+
+        $stepKey = "$($step.Index)"
+        $r = $resultIndex[$stepKey]
+
+        if ($r) {
+            # Current run card
+            $sc  = switch ($r.Status)  { 'DONE' { 'done' } 'FAIL' { 'fail' } 'SKIP' { 'skip' } default { 'skip' } }
+            $vc  = switch ($r.Verdict) { 'PASS' { 'pass' } 'WARN' { 'warn' } 'FAIL' { 'fail' } default { 'pass' } }
+            $vl  = switch ($r.Verdict) { 'PASS' { '&#10003; Pass' } 'WARN' { '&#9888; Warn' } 'FAIL' { '&#10007; Fail' } default { '' } }
+            $vrCol = switch ($r.Verdict) { 'PASS' { 'var(--pass)' } 'WARN' { '#b45309' } 'FAIL' { 'var(--fail)' } default { 'var(--text)' } }
+
+            $null = $sb.AppendLine("<div class='card' data-verdict='$vc'><div class='card-head'><span class='step-name'>$($r.Index). $([System.Web.HttpUtility]::HtmlEncode($r.DisplayName))</span>")
+            $null = $sb.AppendLine("<span><span class='status $sc'>$($r.Status)</span><span class='verdict $vc' title='$([System.Web.HttpUtility]::HtmlEncode($r.VerdictReason))'>$vl</span></span></div>")
+            $null = $sb.AppendLine("<div class='card-body'><div class='summary'>$([System.Web.HttpUtility]::HtmlEncode($r.Summary))</div>")
+            if ($r.VerdictReason) {
+                $null = $sb.AppendLine("<div class='summary' style='margin-top:4px;font-weight:600;color:$vrCol'>$([System.Web.HttpUtility]::HtmlEncode($r.VerdictReason))</div>")
+            }
+            $tableHtml = Get-HtmlTable -Parsed $r.ParsedData -ScriptFile $r.ScriptPath
+            if ($tableHtml) { $null = $sb.AppendLine($tableHtml) }
+            $null = $sb.AppendLine('</div></div>')
+
+        } elseif ($script:Session.Steps.ContainsKey($stepKey) -and $script:Session.Steps[$stepKey].Status -and $script:Session.Steps[$stepKey].Status -ne 'not-run') {
+            # Prior session card
+            $sd       = $script:Session.Steps[$stepKey]
+            $priorVc  = switch ($sd.Verdict) { 'PASS' { 'pass' } 'WARN' { 'warn' } 'FAIL' { 'fail' } default { 'pass' } }
+            $priorVl  = switch ($sd.Verdict) { 'PASS' { '&#10003; Pass' } 'WARN' { '&#9888; Warn' } 'FAIL' { '&#10007; Fail' } default { '' } }
+            $priorSc  = switch ($sd.Status)  { 'DONE' { 'done' } 'FAIL' { 'fail' } 'SKIP' { 'skip' } default { 'skip' } }
+            $priorTs  = if ($sd.Timestamp) { try { ([datetime]$sd.Timestamp).ToString('yyyy-MM-dd HH:mm') } catch { $sd.Timestamp } } else { 'prior session' }
+
+            $null = $sb.AppendLine("<div class='card prev-session' data-verdict='$priorVc'><div class='card-head'>")
+            $null = $sb.AppendLine("<span class='step-name'>$($step.Index). $([System.Web.HttpUtility]::HtmlEncode($step.DisplayName)) <span class='prev-badge'>Prior session &middot; $priorTs</span></span>")
+            $null = $sb.AppendLine("<span><span class='status $priorSc'>$($sd.Status)</span>$(if ($sd.Verdict) { "<span class='verdict $priorVc'>$priorVl</span>" })</span></div>")
+            if ($sd.VerdictReason) {
+                $null = $sb.AppendLine("<div class='card-body'><div class='summary'>$([System.Web.HttpUtility]::HtmlEncode($sd.VerdictReason))</div></div>")
+            }
+            $null = $sb.AppendLine('</div>')
+
+        } else {
+            # Not yet run placeholder
+            $null = $sb.AppendLine("<div class='card not-run' data-verdict='none'><div class='card-head'>")
+            $null = $sb.AppendLine("<span class='step-name'>$($step.Index). $([System.Web.HttpUtility]::HtmlEncode($step.DisplayName))</span>")
+            $null = $sb.AppendLine("<span><span class='status skip' style='background:#94a3b8'>NOT RUN</span></span></div>")
+            $null = $sb.AppendLine('</div>')
+        }
     }
 
     $null = $sb.AppendLine("<div class='footer'>Generated $now by Start-PreWipeToolkit.ps1</div>")
