@@ -1140,9 +1140,28 @@ function Invoke-RunSteps { # Executes batch of steps and collects results
     Show-RunSummaryInline -Results $resultArray # Display inline summary
     $null = Export-HtmlReport -ResultSet $resultArray -RunLabel $RunLabel # Generate HTML report
 
-    Write-Host '' # Blank line
+    $failedResults = @($runResults | Where-Object { $_.Status -eq 'FAIL' -or $_.Verdict -eq 'FAIL' })
+    if ($failedResults.Count -gt 0) {
+        $failedSteps = @($failedResults | ForEach-Object {
+            $idx = $_.Index
+            $script:Steps | Where-Object { $_.Index -eq $idx } | Select-Object -First 1
+        } | Where-Object { $_ })
+        Write-Host ''
+        Write-Host -NoNewline "  Re-run $($failedSteps.Count) failed step(s)?  " -ForegroundColor Yellow
+        Write-Host -NoNewline '[Y] Yes    [N] No  ' -ForegroundColor DarkCyan
+        $rerunKey = Read-MenuKey
+        Write-Host ''
+        if ($rerunKey -eq 'Y') {
+            $null = Invoke-RunSteps -StepsToRun $failedSteps `
+                -RunLabel "Retry — $($failedSteps.Count) step(s)" `
+                -RunSub 'Re-run of failed steps'
+            return $resultArray
+        }
+    }
+
+    Write-Host ''
     Write-Host '  Press any key to return to menu...' -ForegroundColor DarkGray
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') # Wait for keypress
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 
     return $resultArray # Return results
 }
