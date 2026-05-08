@@ -1200,9 +1200,15 @@ function Invoke-SingleStep { # Menu to run one step interactively
             if ($step) {
                 Invoke-StepInteractive -Step $step
             }
+            else {
+                Write-Host '  Invalid step number. Try again.' -ForegroundColor Yellow
+                Start-Sleep -Seconds 1
+            }
         }
-        Write-Host '  Invalid step number. Try again.' -ForegroundColor Yellow
-        Start-Sleep -Seconds 1
+        else {
+            Write-Host '  Invalid step number. Try again.' -ForegroundColor Yellow
+            Start-Sleep -Seconds 1
+        }
     }
 }
 
