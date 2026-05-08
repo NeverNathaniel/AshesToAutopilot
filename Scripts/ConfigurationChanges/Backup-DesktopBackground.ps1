@@ -34,35 +34,11 @@ param(
 
 #region --- Init ---
 $ScriptName   = 'Backup-DesktopBackground'
-$OutputRoot   = 'C:\PreWipeOutput'
-$WallpaperRoot= "$OutputRoot\Wallpaper"
-$LogDir       = "$OutputRoot\Logs"
+. (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
 $LogFile      = "$LogDir\$ScriptName.log"
-$ErrorLog     = "$OutputRoot\errors.log"
-
-foreach ($d in @($OutputRoot, $WallpaperRoot, $LogDir)) {
-    if (-not (Test-Path $d)) { New-Item -Path $d -ItemType Directory -Force | Out-Null }
-}
-
-function Write-Log {
-    param([string]$Message, [string]$Level = 'INFO')
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [$Level] $Message" | Out-File -FilePath $LogFile -Append
-    if (-not $NonInteractive) { Write-Host "$ts [$Level] $Message" }
-}
-
-function Write-ErrorLog {
-    param([string]$Message)
-    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "$ts [ERROR] [$ScriptName] $Message" | Out-File -FilePath $ErrorLog -Append
-    Write-Log $Message 'ERROR'
-}
-
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "ERROR: This script must be run as Administrator." -ForegroundColor Red
-    exit 1
-}
-
+if (-not (Test-AdminElevation)) { exit 1 }
+$WallpaperRoot= "$OutputRoot\Wallpaper"
+if (-not (Test-Path $WallpaperRoot)) { New-Item -Path $WallpaperRoot -ItemType Directory -Force | Out-Null }
 # Paths considered default Windows wallpapers
 $DefaultWallpaperPaths = @(
     "$env:SystemRoot\Web\",
