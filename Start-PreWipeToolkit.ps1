@@ -1199,7 +1199,6 @@ function Invoke-SingleStep { # Menu to run one step interactively
             $step = $script:Steps | Where-Object { $_.Index -eq $num } | Select-Object -First 1
             if ($step) {
                 Invoke-StepInteractive -Step $step
-                return
             }
         }
         Write-Host '  Invalid step number. Try again.' -ForegroundColor Yellow
