@@ -1258,9 +1258,14 @@ function Show-SessionSummary { # Displays session progress overview
         }
         $badge  = switch ($step.Status) { 'DONE' { '[DONE]' } 'FAIL' { '[FAIL]' } 'SKIP' { '[SKIP]' } default { '[    ]' } }
         $bColor = switch ($step.Status) { 'DONE' { 'Green' } 'FAIL' { 'Red' } 'SKIP' { 'Yellow' } default { 'DarkGray' } }
-        $num    = $step.Index.ToString().PadLeft(2)
+        $stepKey  = "$($step.Index)"
+        $sv       = if ($script:Session.Steps.ContainsKey($stepKey)) { $script:Session.Steps[$stepKey].Verdict } else { $null }
+        $vTag     = switch ($sv) { 'PASS' { '[OK]' } 'WARN' { '[!!]' } 'FAIL' { '[XX]' } default { '[--]' } }
+        $vColor   = switch ($sv) { 'PASS' { 'Green' } 'WARN' { 'Yellow' } 'FAIL' { 'Red' } default { 'DarkGray' } }
+        $num      = $step.Index.ToString().PadLeft(2)
         Write-Host -NoNewline "   $num  " -ForegroundColor DarkGray
         Write-Host -NoNewline $badge      -ForegroundColor $bColor
+        Write-Host -NoNewline " $vTag"    -ForegroundColor $vColor
         Write-Host "  $($step.DisplayName)" -ForegroundColor Gray
     }
 
