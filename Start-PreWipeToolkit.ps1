@@ -234,7 +234,7 @@ $script:FullBanner = @( # ASCII art full banner (13 lines)
    ' ╚═╝  ╚═╝ ╚═════╝    ╚═╝    ╚═════╝ ╚═╝     ╚═╝╚══════╝ ╚═════╝    ╚═╝   '
    '                                                                         '
    '     Pre-Wipe Preparation Toolkit for Windows Device Wipe & Autopilot    '
-   '          Created by Nathan Sol | NeverNathaniel/AshesToAutopilot                                                          '
+   '          Created by Nathan Sol | NeverNathaniel/AshesToAutopilot        '
 )
 
 $script:CompactBanner = @( # Compact 4-line banner
