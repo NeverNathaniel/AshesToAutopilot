@@ -163,9 +163,11 @@ function Import-Session { # Loads session from JSON or creates new
         $steps = @{}
         foreach ($prop in $raw.Steps.PSObject.Properties) {
             $steps[$prop.Name] = @{
-                Status    = $prop.Value.Status
-                Timestamp = $prop.Value.Timestamp
-                ExitCode  = $prop.Value.ExitCode
+                Status        = $prop.Value.Status
+                Timestamp     = $prop.Value.Timestamp
+                ExitCode      = $prop.Value.ExitCode
+                Verdict       = $prop.Value.Verdict
+                VerdictReason = $prop.Value.VerdictReason
             }
         }
         foreach ($step in $script:Steps) {
@@ -202,12 +204,14 @@ function Save-Session { # Persists session to disk
 }
 
 function Update-SessionStep { # Updates step status after execution
-    param([int]$Index, [string]$Status, $ExitCode)
+    param([int]$Index, [string]$Status, $ExitCode, [string]$Verdict = $null, [string]$VerdictReason = $null)
     $key = "$Index"
     if (-not $script:Session.Steps.ContainsKey($key)) { $script:Session.Steps[$key] = @{} }
     $script:Session.Steps[$key].Status    = $Status
     $script:Session.Steps[$key].Timestamp = (Get-Date -Format 'o')
     $script:Session.Steps[$key].ExitCode  = $ExitCode
+    $script:Session.Steps[$key].Verdict      = $Verdict
+    $script:Session.Steps[$key].VerdictReason = $VerdictReason
 }
 
 #endregion
@@ -1079,7 +1083,9 @@ function Invoke-RunSteps { # Executes batch of steps and collects results
         $result = Invoke-StepCapture -Step $step # Execute step and capture output
 
         $step.Status = $result.Status # Update step status
-        Update-SessionStep -Index $step.Index -Status $step.Status -ExitCode ($result.Status -eq 'DONE' ? 0 : 1) # Update session
+        $exitCodeVal = if ($result.Status -eq 'DONE') { 0 } else { 1 }
+        Update-SessionStep -Index $step.Index -Status $step.Status -ExitCode $exitCodeVal `
+            -Verdict $result.Verdict -VerdictReason $result.VerdictReason
         Save-Session # Persist session state
 
         switch ($step.Status) {
