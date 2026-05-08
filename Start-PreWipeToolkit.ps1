@@ -1050,7 +1050,21 @@ function Invoke-StepInteractive { # Runs step interactively with output
         Write-Host "  [FAIL] Exited with code $exitCode — review output above." -ForegroundColor Red
     }
 
-    Update-SessionStep -Index $Step.Index -Status $Step.Status -ExitCode $exitCode
+    # Read JSON and derive verdict for single-step runs
+    $scriptBaseName = [System.IO.Path]::GetFileNameWithoutExtension($Step.ScriptPath)
+    $jsonPath = Join-Path $LogDir "$scriptBaseName-Report.json"
+    $stepVerdict = $null; $stepVerdictReason = $null
+    if (Test-Path $jsonPath) {
+        try {
+            $parsed = Get-Content $jsonPath -Raw | ConvertFrom-Json
+            $vResult = Get-StepVerdict -Parsed $parsed -ScriptFile $Step.ScriptPath -Status $Step.Status
+            $stepVerdict = $vResult.Verdict
+            $stepVerdictReason = $vResult.Reason
+        } catch { }
+    }
+    if (-not $stepVerdict) { $stepVerdict = if ($exitCode -eq 0) { 'PASS' } else { 'FAIL' } }
+
+    Update-SessionStep -Index $Step.Index -Status $Step.Status -ExitCode $exitCode -Verdict $stepVerdict -VerdictReason $stepVerdictReason
     Save-Session
 
     Write-Host ''
