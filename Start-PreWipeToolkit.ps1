@@ -92,10 +92,11 @@ Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue # Load for HTML 
 $script:QuickCheckIndices = @(11, 12, 1, 2, 3, 6, 13, 18, 19, 20, 4, 29) # 12 core steps for quick scan
 
 $script:PhaseLabels = [ordered]@{ # Human-readable phase names
-    'ScanCheckBackup' = 'Scan, Check & Backup'
-    'Configure'       = 'Configure'
-    'InstallUpdate'   = 'Install & Update'
-    'Autopilot'       = 'Autopilot'
+    'ScanCheck'     = 'Scan & Check'
+    'Backup'        = 'Backup'
+    'Configure'     = 'Configure'
+    'InstallUpdate' = 'Install & Update'
+    'Autopilot'     = 'Autopilot'
 }
 
 function Get-PhaseLabel([string]$Phase) {
@@ -104,28 +105,28 @@ function Get-PhaseLabel([string]$Phase) {
 }
 
 $script:Steps = @(
-    [PSCustomObject]@{ Index =  1; Phase = 'ScanCheckBackup'; DisplayName = 'Scan for Unbacked Data & Non-Std Apps'; ScriptPath = 'Scripts\DataCollection\Find-UnbackedData.ps1';                 Status = 'not-run' }
-    [PSCustomObject]@{ Index =  2; Phase = 'ScanCheckBackup'; DisplayName = 'Check Downloads Folder Sizes';          ScriptPath = 'Scripts\DataCollection\Get-DownloadsSize.ps1';                 Status = 'not-run' }
-    [PSCustomObject]@{ Index =  3; Phase = 'ScanCheckBackup'; DisplayName = 'Get Drive Mappings';                    ScriptPath = 'Scripts\DataCollection\Get-DriveMappings.ps1';                 Status = 'not-run' }
-    [PSCustomObject]@{ Index =  4; Phase = 'ScanCheckBackup'; DisplayName = 'List Printers';                         ScriptPath = 'Scripts\DataCollection\Get-Printers.ps1';                      Status = 'not-run' }
-    [PSCustomObject]@{ Index =  5; Phase = 'ScanCheckBackup'; DisplayName = 'Get Windows Product Key';               ScriptPath = 'Scripts\DataCollection\Get-WindowsProductKey.ps1';             Status = 'not-run' }
-    [PSCustomObject]@{ Index =  6; Phase = 'ScanCheckBackup'; DisplayName = 'Get Installed Applications';            ScriptPath = 'Scripts\DataCollection\Get-InstalledApplications.ps1';         Status = 'not-run' }
-    [PSCustomObject]@{ Index =  7; Phase = 'ScanCheckBackup'; DisplayName = 'Get Device Health Report';              ScriptPath = 'Scripts\DataCollection\Get-DeviceHealth.ps1';                  Status = 'not-run' }
-    [PSCustomObject]@{ Index =  8; Phase = 'ScanCheckBackup'; DisplayName = 'Get Teams Chat & Meeting Data';         ScriptPath = 'Scripts\DataCollection\Get-TeamsData.ps1';                     Status = 'not-run' }
-    [PSCustomObject]@{ Index =  9; Phase = 'ScanCheckBackup'; DisplayName = 'Get Credential Manager Entries';        ScriptPath = 'Scripts\DataCollection\Get-CredentialManagerEntries.ps1';      Status = 'not-run' }
-    [PSCustomObject]@{ Index = 10; Phase = 'ScanCheckBackup'; DisplayName = 'Get Local Accounts';                    ScriptPath = 'Scripts\DataCollection\Get-LocalAccounts.ps1';                 Status = 'not-run' }
-    [PSCustomObject]@{ Index = 11; Phase = 'ScanCheckBackup'; DisplayName = 'Test OneDrive KFM Status';              ScriptPath = 'Scripts\ConfigurationChecks\Test-OneDriveKFM.ps1';             Status = 'not-run' }
-    [PSCustomObject]@{ Index = 12; Phase = 'ScanCheckBackup'; DisplayName = 'Test OneDrive Sync Status';             ScriptPath = 'Scripts\ConfigurationChecks\Test-OneDriveSyncStatus.ps1';      Status = 'not-run' }
-    [PSCustomObject]@{ Index = 13; Phase = 'ScanCheckBackup'; DisplayName = 'Get Storage Controller Mode';           ScriptPath = 'Scripts\ConfigurationChecks\Get-StorageMode.ps1';              Status = 'not-run' }
-    [PSCustomObject]@{ Index = 14; Phase = 'ScanCheckBackup'; DisplayName = 'Test BIOS Version (Dell)';              ScriptPath = 'Scripts\ConfigurationChecks\Test-BiosVersion.ps1';             Status = 'not-run' }
-    [PSCustomObject]@{ Index = 15; Phase = 'ScanCheckBackup'; DisplayName = 'Test Driver Status (Dell DCU)';         ScriptPath = 'Scripts\ConfigurationChecks\Test-DriverStatus.ps1';            Status = 'not-run' }
-    [PSCustomObject]@{ Index = 16; Phase = 'ScanCheckBackup'; DisplayName = 'Test Wake-on-LAN Settings';             ScriptPath = 'Scripts\ConfigurationChecks\Test-WakeOnLan.ps1';               Status = 'not-run' }
-    [PSCustomObject]@{ Index = 17; Phase = 'ScanCheckBackup'; DisplayName = 'Test Windows Recovery (WinRE)';         ScriptPath = 'Scripts\ConfigurationChecks\Test-WinRE.ps1';                   Status = 'not-run' }
-    [PSCustomObject]@{ Index = 18; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Browser Bookmarks';              ScriptPath = 'Scripts\ConfigurationChanges\Backup-BrowserBookmarks.ps1';     Status = 'not-run' }
-    [PSCustomObject]@{ Index = 19; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Desktop Background';             ScriptPath = 'Scripts\ConfigurationChanges\Backup-DesktopBackground.ps1';   Status = 'not-run' }
-    [PSCustomObject]@{ Index = 20; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Outlook Signatures';             ScriptPath = 'Scripts\ConfigurationChanges\Backup-OutlookSignatures.ps1';   Status = 'not-run' }
-    [PSCustomObject]@{ Index = 21; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Taskbar Layout';                 ScriptPath = 'Scripts\ConfigurationChanges\Backup-TaskbarLayout.ps1';       Status = 'not-run' }
-    [PSCustomObject]@{ Index = 22; Phase = 'ScanCheckBackup'; DisplayName = 'Backup Wi-Fi Profiles';                 ScriptPath = 'Scripts\ConfigurationChanges\Backup-WiFiProfiles.ps1';        Status = 'not-run' }
+    [PSCustomObject]@{ Index =  1; Phase = 'ScanCheck'; DisplayName = 'Scan for Unbacked Data & Non-Std Apps'; ScriptPath = 'Scripts\DataCollection\Find-UnbackedData.ps1';                 Status = 'not-run' }
+    [PSCustomObject]@{ Index =  2; Phase = 'ScanCheck'; DisplayName = 'Check Downloads Folder Sizes';          ScriptPath = 'Scripts\DataCollection\Get-DownloadsSize.ps1';                 Status = 'not-run' }
+    [PSCustomObject]@{ Index =  3; Phase = 'ScanCheck'; DisplayName = 'Get Drive Mappings';                    ScriptPath = 'Scripts\DataCollection\Get-DriveMappings.ps1';                 Status = 'not-run' }
+    [PSCustomObject]@{ Index =  4; Phase = 'ScanCheck'; DisplayName = 'List Printers';                         ScriptPath = 'Scripts\DataCollection\Get-Printers.ps1';                      Status = 'not-run' }
+    [PSCustomObject]@{ Index =  5; Phase = 'ScanCheck'; DisplayName = 'Get Windows Product Key';               ScriptPath = 'Scripts\DataCollection\Get-WindowsProductKey.ps1';             Status = 'not-run' }
+    [PSCustomObject]@{ Index =  6; Phase = 'ScanCheck'; DisplayName = 'Get Installed Applications';            ScriptPath = 'Scripts\DataCollection\Get-InstalledApplications.ps1';         Status = 'not-run' }
+    [PSCustomObject]@{ Index =  7; Phase = 'ScanCheck'; DisplayName = 'Get Device Health Report';              ScriptPath = 'Scripts\DataCollection\Get-DeviceHealth.ps1';                  Status = 'not-run' }
+    [PSCustomObject]@{ Index =  8; Phase = 'ScanCheck'; DisplayName = 'Get Teams Chat & Meeting Data';         ScriptPath = 'Scripts\DataCollection\Get-TeamsData.ps1';                     Status = 'not-run' }
+    [PSCustomObject]@{ Index =  9; Phase = 'ScanCheck'; DisplayName = 'Get Credential Manager Entries';        ScriptPath = 'Scripts\DataCollection\Get-CredentialManagerEntries.ps1';      Status = 'not-run' }
+    [PSCustomObject]@{ Index = 10; Phase = 'ScanCheck'; DisplayName = 'Get Local Accounts';                    ScriptPath = 'Scripts\DataCollection\Get-LocalAccounts.ps1';                 Status = 'not-run' }
+    [PSCustomObject]@{ Index = 11; Phase = 'ScanCheck'; DisplayName = 'Test OneDrive KFM Status';              ScriptPath = 'Scripts\ConfigurationChecks\Test-OneDriveKFM.ps1';             Status = 'not-run' }
+    [PSCustomObject]@{ Index = 12; Phase = 'ScanCheck'; DisplayName = 'Test OneDrive Sync Status';             ScriptPath = 'Scripts\ConfigurationChecks\Test-OneDriveSyncStatus.ps1';      Status = 'not-run' }
+    [PSCustomObject]@{ Index = 13; Phase = 'ScanCheck'; DisplayName = 'Get Storage Controller Mode';           ScriptPath = 'Scripts\ConfigurationChecks\Get-StorageMode.ps1';              Status = 'not-run' }
+    [PSCustomObject]@{ Index = 14; Phase = 'ScanCheck'; DisplayName = 'Test BIOS Version (Dell)';              ScriptPath = 'Scripts\ConfigurationChecks\Test-BiosVersion.ps1';             Status = 'not-run' }
+    [PSCustomObject]@{ Index = 15; Phase = 'ScanCheck'; DisplayName = 'Test Driver Status (Dell DCU)';         ScriptPath = 'Scripts\ConfigurationChecks\Test-DriverStatus.ps1';            Status = 'not-run' }
+    [PSCustomObject]@{ Index = 16; Phase = 'ScanCheck'; DisplayName = 'Test Wake-on-LAN Settings';             ScriptPath = 'Scripts\ConfigurationChecks\Test-WakeOnLan.ps1';               Status = 'not-run' }
+    [PSCustomObject]@{ Index = 17; Phase = 'ScanCheck'; DisplayName = 'Test Windows Recovery (WinRE)';         ScriptPath = 'Scripts\ConfigurationChecks\Test-WinRE.ps1';                   Status = 'not-run' }
+    [PSCustomObject]@{ Index = 18; Phase = 'Backup'; DisplayName = 'Backup Browser Bookmarks';              ScriptPath = 'Scripts\ConfigurationChanges\Backup-BrowserBookmarks.ps1';     Status = 'not-run' }
+    [PSCustomObject]@{ Index = 19; Phase = 'Backup'; DisplayName = 'Backup Desktop Background';             ScriptPath = 'Scripts\ConfigurationChanges\Backup-DesktopBackground.ps1';   Status = 'not-run' }
+    [PSCustomObject]@{ Index = 20; Phase = 'Backup'; DisplayName = 'Backup Outlook Signatures';             ScriptPath = 'Scripts\ConfigurationChanges\Backup-OutlookSignatures.ps1';   Status = 'not-run' }
+    [PSCustomObject]@{ Index = 21; Phase = 'Backup'; DisplayName = 'Backup Taskbar Layout';                 ScriptPath = 'Scripts\ConfigurationChanges\Backup-TaskbarLayout.ps1';       Status = 'not-run' }
+    [PSCustomObject]@{ Index = 22; Phase = 'Backup'; DisplayName = 'Backup Wi-Fi Profiles';                 ScriptPath = 'Scripts\ConfigurationChanges\Backup-WiFiProfiles.ps1';        Status = 'not-run' }
     [PSCustomObject]@{ Index = 23; Phase = 'Configure';       DisplayName = 'Escrow BitLocker Key to Entra ID';      ScriptPath = 'Scripts\ConfigurationChanges\Test-BitLockerEscrow.ps1';       Status = 'not-run' }
     [PSCustomObject]@{ Index = 24; Phase = 'Configure';       DisplayName = 'Set Wake-on-LAN (BIOS + NIC + Windows)';ScriptPath = 'Scripts\ConfigurationChanges\Set-WakeOnLan.ps1';              Status = 'not-run' }
     [PSCustomObject]@{ Index = 25; Phase = 'InstallUpdate';   DisplayName = 'Install Dell Command Tools';            ScriptPath = 'Scripts\ConfigurationChanges\Install-DellCommandTools.ps1';   Status = 'not-run' }
