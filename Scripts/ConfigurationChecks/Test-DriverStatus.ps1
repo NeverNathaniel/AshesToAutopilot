@@ -36,6 +36,7 @@ param(
 #region --- Init ---
 $ScriptName = 'Test-DriverStatus'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Find-DellCommandTool.ps1')
 $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
@@ -52,12 +53,7 @@ $DCUScanResult  = $null
 
 #region --- Dell: DCU Scan for Drivers ---
 if ($IsDell) {
-    $DCUPaths = @(
-        "$env:ProgramFiles\Dell\CommandUpdate\dcu-cli.exe",
-        "${env:ProgramFiles(x86)}\Dell\CommandUpdate\dcu-cli.exe"
-    )
-    $DCUExe = $null
-    foreach ($p in $DCUPaths) { if (Test-Path $p) { $DCUExe = $p; break } }
+    $DCUExe = Find-DellCommandUpdate
 
     if ($DCUExe) {
         Write-Log "Running DCU scan for driver updates..."

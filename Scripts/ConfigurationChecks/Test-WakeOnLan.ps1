@@ -35,6 +35,7 @@ param(
 #region --- Init ---
 $ScriptName = 'Test-WakeOnLan'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Find-DellCommandTool.ps1')
 $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
@@ -47,22 +48,11 @@ Write-Log "Manufacturer: $Manufacturer | IsDell: $IsDell"
 #endregion
 
 #region --- DCC Check (Dell only) ---
-function Get-DCCExePath {
-    $candidates = @(
-        "$env:ProgramFiles\Dell\Command Configure\X86_64\cctk.exe",
-        "$env:ProgramFiles\Dell\Command Configure\cctk.exe",
-        "${env:ProgramFiles(x86)}\Dell\Command Configure\X86_64\cctk.exe",
-        "${env:ProgramFiles(x86)}\Dell\Command Configure\cctk.exe"
-    )
-    foreach ($p in $candidates) { if (Test-Path $p) { return $p } }
-    return $null
-}
-
 $BIOSWOLStatus = 'NotChecked'
 $DCCPath       = $null
 
 if ($IsDell) {
-    $DCCPath = Get-DCCExePath
+    $DCCPath = Find-DellCommandConfigure
     if ($DCCPath) {
         Write-Log "DCC found: $DCCPath"
         try {

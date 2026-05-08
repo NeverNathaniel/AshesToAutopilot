@@ -36,6 +36,7 @@ param(
 #region --- Init ---
 $ScriptName = 'Test-BiosVersion'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Find-DellCommandTool.ps1')
 $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
@@ -70,12 +71,7 @@ try {
         Write-Log "Dell device - checking DCU for BIOS update availability..."
 
         # Find DCU CLI
-        $DCUPaths = @(
-            "$env:ProgramFiles\Dell\CommandUpdate\dcu-cli.exe",
-            "${env:ProgramFiles(x86)}\Dell\CommandUpdate\dcu-cli.exe"
-        )
-        $DCUExe = $null
-        foreach ($p in $DCUPaths) { if (Test-Path $p) { $DCUExe = $p; break } }
+        $DCUExe = Find-DellCommandUpdate
 
         if ($DCUExe) {
             $Result.DCUPath = $DCUExe
