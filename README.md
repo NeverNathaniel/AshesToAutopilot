@@ -123,6 +123,24 @@ These scripts write files to the output folder. They live in `Scripts/Configurat
 
 ---
 
+## Post-Run Reporting
+
+### Report-AutopilotReadinessToHudu.ps1
+
+Posts a structured pre-wipe readiness report to a Hudu IT documentation instance.
+This script is **not part of the orchestrated workflow** and must be run manually after `Start-PreWipeToolkit.ps1` completes.
+
+**Prerequisites:**
+- The `HuduAPI` PowerShell module: `Install-Module HuduAPI`
+- A Hudu instance with API access
+
+**Usage:**
+```
+.\Scripts\AutopilotReadiness\Report-AutopilotReadinessToHudu.ps1 -HuduBaseUrl "https://your-hudu.com"
+```
+
+---
+
 ## Output
 
 All output is written to `C:\PreWipeOutput\`:

@@ -98,6 +98,13 @@ $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
 
+#region --- Module Check ---
+if (-not (Get-Module -Name HuduAPI -ListAvailable)) {
+    Write-Host "ERROR: HuduAPI module is not installed. Run: Install-Module HuduAPI" -ForegroundColor Red
+    exit 1
+}
+#endregion
+
 #region --- HTML Helpers ---
 function Set-HtmlTagAttributes {
     <#
