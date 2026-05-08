@@ -1060,7 +1060,6 @@ function Export-HtmlReport { # Generates styled HTML report from results
         }
     }
 
-    $null = $sb.AppendLine("<div class='footer'>Generated $now by Start-PreWipeToolkit.ps1</div>")
     $null = $sb.AppendLine(@'
 <script>
 function filterCards(mode,btn){
@@ -1075,6 +1074,13 @@ function filterCards(mode,btn){
 }
 </script>
 '@)
+
+    $htmlSizeKb = [Math]::Round($sb.Length / 1024, 0)
+    $null = $sb.AppendLine("<div class='export-panel'><h4>&#128190; This Report</h4>")
+    $null = $sb.AppendLine("<div class='export-grid'>")
+    $null = $sb.AppendLine("<span>HTML</span><span class='path'>$([System.Web.HttpUtility]::HtmlEncode($htmlPath))</span><span class='size'>~$htmlSizeKb KB</span>")
+    $null = $sb.AppendLine("</div></div>")
+    $null = $sb.AppendLine("<div class='footer'>Generated $now by Start-PreWipeToolkit.ps1</div>")
     $null = $sb.AppendLine('</div></body></html>')
 
     try {
@@ -1509,10 +1515,48 @@ function Export-SessionReport { # Exports session as JSON and text
         $lines.Add("  Skipped : $skip")
         $lines.Add("  Not Run : $norun")
         $lines | Set-Content $txtPath -Encoding UTF8 -Force
-        Write-Host "  TXT  : $txtPath" -ForegroundColor Green
     } catch {
         Write-ErrorLog "TXT export failed: $_"
         Write-Host "  TXT export failed: $_" -ForegroundColor Red
+    }
+
+    $htmlPath = $null
+    try {
+        $allResults = @($script:Steps | ForEach-Object {
+            $key = "$($_.Index)"
+            $sd  = if ($script:Session.Steps.ContainsKey($key)) { $script:Session.Steps[$key] } else { $null }
+            [PSCustomObject]@{
+                Index         = $_.Index
+                Phase         = $_.Phase
+                DisplayName   = $_.DisplayName
+                ScriptPath    = $_.ScriptPath
+                Status        = if ($sd) { $sd.Status } else { 'not-run' }
+                Summary       = if ($sd -and $sd.VerdictReason) { $sd.VerdictReason } else { '' }
+                ParsedData    = $null
+                Elapsed       = $null
+                Verdict       = if ($sd) { $sd.Verdict } else { $null }
+                VerdictReason = if ($sd) { $sd.VerdictReason } else { $null }
+            }
+        })
+        $htmlPath = Export-HtmlReport -ResultSet $allResults -RunLabel 'Session Export'
+    } catch {
+        Write-ErrorLog "HTML export failed: $_"
+        Write-Host "  HTML export failed: $_" -ForegroundColor Red
+    }
+
+    Write-Host ''
+    Write-Host '  Exported:' -ForegroundColor Cyan
+    foreach ($entry in @(
+        @{ Label = 'JSON'; Path = $jsonPath }
+        @{ Label = 'TXT '; Path = $txtPath  }
+        @{ Label = 'HTML'; Path = $htmlPath }
+    )) {
+        if ($entry.Path -and (Test-Path $entry.Path)) {
+            $kb = [Math]::Round((Get-Item $entry.Path).Length / 1024, 0)
+            Write-Host -NoNewline "    $($entry.Label)  " -ForegroundColor DarkGray
+            Write-Host -NoNewline $entry.Path -ForegroundColor Gray
+            Write-Host "  ($kb KB)" -ForegroundColor DarkGray
+        }
     }
 
     Write-Host ''
