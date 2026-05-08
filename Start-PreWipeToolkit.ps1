@@ -295,13 +295,24 @@ function Show-MainMenu { # Displays main menu with progress
     $fail  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count # Count failed steps
     $total = $script:Steps.Count # Total step count
 
+    $warnV = @($script:Steps | Where-Object {
+        $key = "$($_.Index)"
+        $script:Session.Steps.ContainsKey($key) -and $script:Session.Steps[$key].Verdict -eq 'WARN'
+    }).Count
+    $failV = @($script:Steps | Where-Object {
+        $key = "$($_.Index)"
+        $script:Session.Steps.ContainsKey($key) -and $script:Session.Steps[$key].Verdict -eq 'FAIL'
+    }).Count
+
     Clear-Host # Clear screen
     Show-InitialBanner # Show banner (full on first run, compact after)
 
     $inner   = 56
     $bar     = '═' * ($inner + 2)
     $progBar = Get-ProgressBarString -Done $done -Total $total -Width 24
-    $progTxt = "$progBar  $done/$total complete$(if ($fail -gt 0) { "  ($fail failed)" })"
+    $warnStr = if ($warnV -gt 0) { "  [!!] $warnV" } else { '' }
+    $failStr = if ($failV -gt 0) { "  [XX] $failV" } else { '' }
+    $progTxt = "$progBar  $done/$total complete$warnStr$failStr"
 
     Write-Host "  ╔$bar╗" -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ("  $($script:ComputerName)  ·  SN: $($script:SerialNumber)  ·  $($script:CurrentUser)").PadRight($inner)) -ForegroundColor DarkGray
