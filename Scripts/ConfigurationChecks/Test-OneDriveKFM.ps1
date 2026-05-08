@@ -37,50 +37,13 @@ param(
 #region --- Init ---
 $ScriptName = 'Test-OneDriveKFM'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Get-ActiveUserProfile.ps1')
 $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
 
 #region --- Profile Enumeration ---
-$SkipSIDs  = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
-$CutoffDate = (Get-Date).AddDays(-30)
-$SkipNames  = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
-
-$Profiles = @()
-try {
-    $AllProfiles = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
-        Where-Object { -not $_.Special }
-
-    foreach ($p in $AllProfiles) {
-        $sid = $p.SID
-        # Skip system SIDs
-        if ($SkipSIDs -contains $sid) {
-            Write-Log "Skipping system SID: $sid" 'DEBUG'
-            continue
-        }
-        if ($sid -match '^S-1-5-(18|19|20)$') {
-            Write-Log "Skipping system SID pattern: $sid" 'DEBUG'
-            continue
-        }
-        # Get folder name
-        $folderName = Split-Path $p.LocalPath -Leaf
-        if ($SkipNames -contains $folderName.ToLower()) {
-            Write-Log "Skipping service account profile: $folderName"
-            continue
-        }
-        # Skip inactive profiles
-        $lastUse = $p.LastUseTime
-        if ($null -eq $lastUse -or $lastUse -lt $CutoffDate) {
-            Write-Log "Skipping inactive profile: $folderName (LastUse: $lastUse)"
-            continue
-        }
-        $Profiles += $p
-    }
-} catch {
-    Write-ErrorLog "Failed to enumerate profiles: $_"
-    exit 1
-}
-
+$Profiles = @(Get-ActiveUserProfile)
 Write-Log "Active profiles to check: $($Profiles.Count)"
 #endregion
 
@@ -108,21 +71,12 @@ foreach ($Profile in $Profiles) {
 
     try {
         # Load the user's registry hive if not already loaded
-        $HiveLoaded = $false
-        $HivePath   = "HKU:\$SID"
-
-        if (-not (Test-Path "Registry::HKEY_USERS\$SID")) {
-            $NtuserDat = Join-Path $ProfilePath 'NTUSER.DAT'
-            if (Test-Path $NtuserDat) {
-                $null = reg load "HKU\$SID" $NtuserDat 2>&1
-                $HiveLoaded = $true
-                Start-Sleep -Milliseconds 500
-            } else {
-                Write-Log "No NTUSER.DAT found for $ProfileName, skipping registry checks." 'WARN'
-                $ProfileResult.Issues += 'No NTUSER.DAT found'
-                $Results += $ProfileResult
-                continue
-            }
+        $HiveLoaded = Mount-UserHive -UserProfile $Profile
+        if (-not $HiveLoaded -and -not (Test-Path "Registry::HKEY_USERS\$SID")) {
+            Write-Log "No NTUSER.DAT found for $ProfileName, skipping registry checks." 'WARN'
+            $ProfileResult.Issues += 'No NTUSER.DAT found'
+            $Results += $ProfileResult
+            continue
         }
 
         # OneDrive KFM registry keys
@@ -223,11 +177,7 @@ foreach ($Profile in $Profiles) {
         Write-ErrorLog "Error checking profile $ProfileName : $_"
         $ProfileResult.Issues += "Error: $_"
     } finally {
-        if ($HiveLoaded) {
-            [GC]::Collect()
-            Start-Sleep -Milliseconds 200
-            $null = reg unload "HKU\$SID" 2>&1
-        }
+        if ($HiveLoaded) { Dismount-UserHive -SID $SID }
     }
 
     $Results += $ProfileResult

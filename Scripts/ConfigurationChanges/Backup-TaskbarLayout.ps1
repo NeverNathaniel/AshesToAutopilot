@@ -37,6 +37,7 @@ param(
 #region --- Init ---
 $ScriptName  = 'Backup-TaskbarLayout'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Get-ActiveUserProfile.ps1')
 $LogFile     = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 $TaskbarRoot = "$OutputRoot\Taskbar"
@@ -48,27 +49,7 @@ Write-Log "Windows build: $OSBuild | Win11: $IsWin11"
 #endregion
 
 #region --- Profile Enumeration ---
-$SkipSIDs   = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
-$CutoffDate = (Get-Date).AddDays(-30)
-$SkipNames  = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
-
-$Profiles = @()
-try {
-    $AllProfiles = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
-        Where-Object { -not $_.Special }
-    foreach ($p in $AllProfiles) {
-        $sid = $p.SID
-        if ($SkipSIDs -contains $sid -or $sid -match '^S-1-5-(18|19|20)$') { continue }
-        $folderName = Split-Path $p.LocalPath -Leaf
-        if ($SkipNames -contains $folderName.ToLower()) { Write-Log "Skipping service account: $folderName"; continue }
-        $lastUse = $p.LastUseTime
-        if ($null -eq $lastUse -or $lastUse -lt $CutoffDate) { Write-Log "Skipping inactive: $folderName"; continue }
-        $Profiles += $p
-    }
-} catch {
-    Write-ErrorLog "Profile enumeration failed: $_"; exit 1
-}
-
+$Profiles = @(Get-ActiveUserProfile)
 Write-Log "Active profiles: $($Profiles.Count)"
 #endregion
 
@@ -99,15 +80,7 @@ foreach ($Profile in $Profiles) {
         if (-not (Test-Path $Dest)) { New-Item -Path $Dest -ItemType Directory -Force | Out-Null }
 
         # Load user registry hive
-        $HiveLoaded = $false
-        if (-not (Test-Path "Registry::HKEY_USERS\$SID")) {
-            $NtuserDat = Join-Path $ProfilePath 'NTUSER.DAT'
-            if (Test-Path $NtuserDat) {
-                $null = reg load "HKU\$SID" $NtuserDat 2>&1
-                $HiveLoaded = $true
-                Start-Sleep -Milliseconds 500
-            }
-        }
+        $HiveLoaded = Mount-UserHive -UserProfile $Profile
 
         # Files to back up (both Win10 and Win11)
         $filesToCopy = @(
@@ -169,10 +142,7 @@ foreach ($Profile in $Profiles) {
             }
         }
 
-        if ($HiveLoaded) {
-            [GC]::Collect(); Start-Sleep -Milliseconds 200
-            $null = reg unload "HKU\$SID" 2>&1
-        }
+        if ($HiveLoaded) { Dismount-UserHive -SID $SID }
 
         $Result.Success = $true
     } catch {
