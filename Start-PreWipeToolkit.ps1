@@ -986,6 +986,23 @@ function Export-HtmlReport { # Generates styled HTML report from results
         $null = $sb.AppendLine("</div>")
     }
 
+    $issueCount = @($ResultSet | Where-Object { $_.Verdict -eq 'FAIL' -or $_.Verdict -eq 'WARN' }).Count
+    $warnCount  = @($ResultSet | Where-Object { $_.Verdict -eq 'WARN' }).Count
+    $phaseKeys  = @($script:Steps | Select-Object -ExpandProperty Phase -Unique)
+
+    $null = $sb.AppendLine("<div class='filter-bar'>")
+    $null = $sb.AppendLine("<span class='filter-label'>Show:</span>")
+    $null = $sb.AppendLine("<button class='filter-btn active' onclick='filterCards(""all"",this)'>All ($($ResultSet.Count))</button>")
+    $null = $sb.AppendLine("<button class='filter-btn' onclick='filterCards(""issues"",this)'>Issues Only ($issueCount)</button>")
+    $null = $sb.AppendLine("<button class='filter-btn' onclick='filterCards(""warn"",this)'>Warnings ($warnCount)</button>")
+    $null = $sb.AppendLine("<div class='phase-jumps'>")
+    foreach ($pk in $phaseKeys) {
+        $pl = Get-PhaseLabel $pk
+        $null = $sb.AppendLine("<a class='phase-jump' href='#phase-$($pk.ToLower())'>$([System.Web.HttpUtility]::HtmlEncode($pl))</a>")
+    }
+    $null = $sb.AppendLine("</div>")
+    $null = $sb.AppendLine("</div>")
+
     foreach ($r in $ResultSet) {
         $sc   = switch ($r.Status)  { 'DONE' { 'done' } 'FAIL' { 'fail' } 'SKIP' { 'skip' } default { 'skip' } }
         $vc   = switch ($r.Verdict) { 'PASS' { 'pass' } 'WARN' { 'warn' } 'FAIL' { 'fail' } default { 'pass' } }
@@ -1004,6 +1021,20 @@ function Export-HtmlReport { # Generates styled HTML report from results
     }
 
     $null = $sb.AppendLine("<div class='footer'>Generated $now by Start-PreWipeToolkit.ps1</div>")
+    $null = $sb.AppendLine(@'
+<script>
+function filterCards(mode,btn){
+  document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  document.querySelectorAll('.card').forEach(function(c){
+    var v=c.dataset.verdict;
+    if(mode==='all'){c.style.display=''}
+    else if(mode==='issues'){c.style.display=(v==='fail'||v==='warn')?'':'none'}
+    else if(mode==='warn'){c.style.display=(v==='warn')?'':'none'}
+  });
+}
+</script>
+'@)
     $null = $sb.AppendLine('</div></body></html>')
 
     try {
