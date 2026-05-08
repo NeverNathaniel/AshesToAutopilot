@@ -992,7 +992,7 @@ function Export-HtmlReport { # Generates styled HTML report from results
 
     $null = $sb.AppendLine("<div class='filter-bar'>")
     $null = $sb.AppendLine("<span class='filter-label'>Show:</span>")
-    $null = $sb.AppendLine("<button class='filter-btn active' onclick='filterCards(""all"",this)'>All ($($ResultSet.Count))</button>")
+    $null = $sb.AppendLine("<button class='filter-btn active' onclick='filterCards(""all"",this)'>All ($($script:Steps.Count))</button>")
     $null = $sb.AppendLine("<button class='filter-btn' onclick='filterCards(""issues"",this)'>Issues Only ($issueCount)</button>")
     $null = $sb.AppendLine("<button class='filter-btn' onclick='filterCards(""warn"",this)'>Warnings ($warnCount)</button>")
     $null = $sb.AppendLine("<div class='phase-jumps'>")
