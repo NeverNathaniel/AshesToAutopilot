@@ -99,6 +99,20 @@ foreach ($fileName in $ScriptMap.Keys) {
             $json = Get-Content $filePath -Raw | ConvertFrom-Json
             $entry.Timestamp = $json.Timestamp
 
+            if ($entry.Timestamp) {
+                try {
+                    $ageHours = ((Get-Date) - [datetime]$entry.Timestamp).TotalHours
+                    $entry | Add-Member -NotePropertyName 'Stale'      -NotePropertyValue ($ageHours -gt 24) -Force
+                    $entry | Add-Member -NotePropertyName 'StaleHours' -NotePropertyValue ([Math]::Round($ageHours, 1)) -Force
+                } catch {
+                    $entry | Add-Member -NotePropertyName 'Stale'      -NotePropertyValue $false -Force
+                    $entry | Add-Member -NotePropertyName 'StaleHours' -NotePropertyValue $null  -Force
+                }
+            } else {
+                $entry | Add-Member -NotePropertyName 'Stale'      -NotePropertyValue $false -Force
+                $entry | Add-Member -NotePropertyName 'StaleHours' -NotePropertyValue $null  -Force
+            }
+
             # Extract status value by path
             $val = $json
             foreach ($part in ($info.StatusPath -split '\.')) {
@@ -221,6 +235,11 @@ if ($Blockers.Count -gt 0) {
     $WipeVerdict = 'READY TO WIPE'
 }
 
+$hasStaleBlockers = @($ScriptResults | Where-Object { $_.Stale -and $_.Status -ne 'NOT_RUN' }).Count -gt 0
+if ($hasStaleBlockers) {
+    $WipeVerdict = "$WipeVerdict (WARNING: some results are over 24h old — re-run affected steps)"
+}
+
 Write-Log "Wipe verdict: $WipeVerdict ($RanScripts/$TotalScripts scripts completed)"
 #endregion
 
@@ -284,7 +303,8 @@ if ($NonInteractive) {
             'ERROR'   { '[!!]' }
             default   { '[??]' }
         }
-        Write-Host "    $icon $($s.Script)" -ForegroundColor $sColor
+        $staleTag = if ($s.Stale) { " [STALE — $($s.StaleHours)h old]" } else { '' }
+        Write-Host "    $icon $($s.Script)$staleTag" -ForegroundColor $sColor
     }
 
     # Blockers
