@@ -1480,7 +1480,6 @@ function Export-SessionReport { # Exports session as JSON and text
 
     try {
         $script:Session | ConvertTo-Json -Depth 5 | Set-Content $jsonPath -Encoding UTF8 -Force
-        Write-Host "  JSON : $jsonPath" -ForegroundColor Green
     } catch {
         Write-ErrorLog "JSON export failed: $_"
         Write-Host "  JSON export failed: $_" -ForegroundColor Red
