@@ -145,7 +145,7 @@ $script:Steps = @(
 function Initialize-Session { # Creates blank session state
     $steps = @{}
     foreach ($step in $script:Steps) {
-        $steps["$($step.Index)"] = @{ Status = 'not-run'; Timestamp = $null; ExitCode = $null } # Initialize each step as not-run
+        $steps["$($step.Index)"] = @{ Status = 'not-run'; Timestamp = $null; ExitCode = $null; Verdict = $null; VerdictReason = $null } # Initialize each step as not-run
     }
     return [PSCustomObject]@{
         StartTime    = (Get-Date -Format 'o') # Session start timestamp
