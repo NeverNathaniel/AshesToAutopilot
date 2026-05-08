@@ -304,7 +304,12 @@ if ($NonInteractive) {
             default   { '[??]' }
         }
         $staleTag = if ($s.Stale) { " [STALE — $($s.StaleHours)h old]" } else { '' }
-        Write-Host "    $icon $($s.Script)$staleTag" -ForegroundColor $sColor
+        if ($staleTag) {
+            Write-Host "    $icon $($s.Script)" -ForegroundColor $sColor -NoNewline
+            Write-Host $staleTag -ForegroundColor Yellow
+        } else {
+            Write-Host "    $icon $($s.Script)" -ForegroundColor $sColor
+        }
     }
 
     # Blockers

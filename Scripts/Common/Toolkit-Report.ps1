@@ -561,6 +561,15 @@ function filterCards(mode,btn){
     else if(mode==='issues'){c.style.display=(v==='fail'||v==='warn')?'':'none'}
     else if(mode==='warn'){c.style.display=(v==='warn')?'':'none'}
   });
+  document.querySelectorAll('.phase-header').forEach(function(h){
+    var sib=h.nextElementSibling;
+    var hasVisible=false;
+    while(sib&&!sib.classList.contains('phase-header')){
+      if(sib.classList.contains('card')&&sib.style.display!=='none'){hasVisible=true;break}
+      sib=sib.nextElementSibling;
+    }
+    h.style.display=hasVisible?'':'none';
+  });
 }
 </script>
 '@)
