@@ -63,7 +63,7 @@ Select any step by number, or enter a comma-separated list (e.g. `1,3,11,12`) to
 
 ## Script Reference
 
-### Scan, Check & Backup
+### Scan & Check
 
 | # | Script | Purpose |
 |---|--------|---------|
@@ -84,20 +84,27 @@ Select any step by number, or enter a comma-separated list (e.g. `1,3,11,12`) to
 | 15 | `Test-DriverStatus.ps1` | Flags outdated or missing drivers via Dell Command Update |
 | 16 | `Test-WakeOnLan.ps1` | Checks current Wake-on-LAN state |
 | 17 | `Test-WinRE.ps1` | Verifies Windows Recovery Environment is enabled |
+
+### Configuration Changes — Backups
+
+These scripts write files to the output folder. They live in `Scripts/ConfigurationChanges/`.
+
+| # | Script | Purpose |
+|---|--------|---------|
 | 18 | `Backup-BrowserBookmarks.ps1` | Exports Chrome/Edge/Firefox bookmarks to output folder |
 | 19 | `Backup-DesktopBackground.ps1` | Saves current desktop wallpaper |
 | 20 | `Backup-OutlookSignatures.ps1` | Copies Outlook signature files to output folder |
 | 21 | `Backup-TaskbarLayout.ps1` | Exports taskbar pin layout |
 | 22 | `Backup-WiFiProfiles.ps1` | Exports saved Wi-Fi profiles |
 
-### Configure
+### Configuration Changes — Configure
 
 | # | Script | Purpose |
 |---|--------|---------|
 | 23 | `Test-BitLockerEscrow.ps1` | Verifies and escrows BitLocker recovery key to Entra ID |
 | 24 | `Set-WakeOnLan.ps1` | Enables WoL via BIOS, NIC settings, and Windows power policy |
 
-### Install & Update
+### Configuration Changes — Install & Update
 
 | # | Script | Purpose |
 |---|--------|---------|
