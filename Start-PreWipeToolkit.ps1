@@ -89,7 +89,18 @@ Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue # Load for HTML 
 
 #region --- Step Definitions ---
 
-$script:QuickCheckIndices = @(11, 12, 1, 2, 3, 6, 13, 18, 19, 20, 4, 29) # 12 core steps for quick scan
+# Quick Check step selection — 12 steps that assess wipe safety without modifying any settings.
+# Selection rationale:
+#   11, 12 — OneDrive KFM + sync: primary data-loss blockers (run first)
+#    1     — Unbacked data scan: identifies at-risk files outside OneDrive
+#    2     — Downloads size: flags large folders that won't survive wipe
+#    3     — Drive mappings: documents network drives to reconnect post-wipe
+#    6     — Installed apps: documents software to reinstall
+#   13     — Storage mode: identifies RAID configurations that complicate reinstall
+#   18, 19, 20 — Browser bookmarks, desktop background, Outlook signatures: lightweight backups
+#    4     — Printers: inventory only, no changes made
+#   29     — Autopilot assignment: confirms Autopilot profile is present on device
+$script:QuickCheckIndices = @(11, 12, 1, 2, 3, 6, 13, 18, 19, 20, 4, 29)
 
 $script:PhaseLabels = [ordered]@{ # Human-readable phase names
     'ScanCheck'     = 'Scan & Check'
