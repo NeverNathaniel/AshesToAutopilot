@@ -173,3 +173,5 @@ if ($NonInteractive) {
 #endregion
 
 if (-not $allEscrowed) { exit 1 }
+
+exit 0

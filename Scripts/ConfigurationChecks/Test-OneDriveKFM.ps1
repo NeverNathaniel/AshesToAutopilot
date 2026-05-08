@@ -214,3 +214,5 @@ if ($NonInteractive) {
 #endregion
 
 if ($anyKfmIssue) { exit 1 }
+
+exit 0

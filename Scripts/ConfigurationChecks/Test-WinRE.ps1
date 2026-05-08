@@ -111,3 +111,5 @@ if ($NonInteractive) {
 #endregion
 
 if (-not $Result.WinREEnabled) { exit 1 }
+
+exit 0
