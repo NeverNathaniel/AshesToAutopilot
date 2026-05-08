@@ -34,6 +34,7 @@ param(
 #region --- Init ---
 $ScriptName = 'Get-DownloadsSize'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Get-ActiveUserProfile.ps1')
 $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
@@ -47,34 +48,7 @@ function Format-Bytes {
 }
 
 #region --- Profile Enumeration ---
-$SkipSIDs   = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
-$CutoffDate = (Get-Date).AddDays(-30)
-$SkipNames  = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
-
-$Profiles = @()
-try {
-    $AllProfiles = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
-        Where-Object { -not $_.Special }
-    foreach ($p in $AllProfiles) {
-        $sid = $p.SID
-        if ($SkipSIDs -contains $sid -or $sid -match '^S-1-5-(18|19|20)$') { continue }
-        $folderName = Split-Path $p.LocalPath -Leaf
-        if ($SkipNames -contains $folderName.ToLower()) {
-            Write-Log "Skipping service account: $folderName"
-            continue
-        }
-        $lastUse = $p.LastUseTime
-        if ($null -eq $lastUse -or $lastUse -lt $CutoffDate) {
-            Write-Log "Skipping inactive profile: $folderName (LastUse: $lastUse)"
-            continue
-        }
-        $Profiles += $p
-    }
-} catch {
-    Write-ErrorLog "Profile enumeration failed: $_"
-    exit 1
-}
-
+$Profiles = @(Get-ActiveUserProfile)
 Write-Log "Active profiles to check: $($Profiles.Count)"
 #endregion
 

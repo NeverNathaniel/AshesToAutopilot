@@ -31,6 +31,7 @@ param(
 #region --- Init ---
 $ScriptName = 'Get-InstalledApplications'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Get-ActiveUserProfile.ps1')
 $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
@@ -105,73 +106,42 @@ Write-Log "Found $($MachineApps.Count) machine-wide applications (after filterin
 Write-Log "Enumerating per-user installed applications..."
 $UserApps = @()
 
-$SkipSIDs   = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20')
-$CutoffDate = (Get-Date).AddDays(-30)
-$SkipNames  = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest')
+$Profiles = @(Get-ActiveUserProfile)
+Write-Log "Active profiles to check: $($Profiles.Count)"
 
-try {
-    $AllProfiles = Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop |
-        Where-Object { -not $_.Special }
+foreach ($p in $Profiles) {
+    $sid        = $p.SID
+    $folderName = Split-Path $p.LocalPath -Leaf
 
-    foreach ($p in $AllProfiles) {
-        $sid = $p.SID
-        $folderName = Split-Path $p.LocalPath -Leaf
-        if ($SkipSIDs -contains $sid) { Write-Log "Skipping system SID: $sid"; continue }
-        if ($sid -match '^S-1-5-(18|19|20)$') { Write-Log "Skipping system SID pattern: $sid"; continue }
+    $HiveLoaded = Mount-UserHive -UserProfile $p
 
-        if ($SkipNames -contains $folderName.ToLower()) { Write-Log "Skipping service account profile: $folderName"; continue }
-        if ($folderName -match 'local$') { Write-Log "Skipping local service account: $folderName"; continue }
+    try {
+        $userRegPath = "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        $entries = Get-ItemProperty $userRegPath -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName }
+        foreach ($entry in $entries) {
+            if (Test-IsNoise $entry.DisplayName) { continue }
 
-        $lastUse = $p.LastUseTime
-        if ($null -eq $lastUse -or $lastUse -lt $CutoffDate) { Write-Log "Skipping inactive profile: $folderName (LastUse: $lastUse)"; continue }
+            $installerType = 'EXE'
+            if ($entry.UninstallString -and $entry.UninstallString -match 'MsiExec') {
+                $installerType = 'MSI'
+            }
 
-        # Load hive if needed
-        $HiveLoaded = $false
-        if (-not (Test-Path "Registry::HKEY_USERS\$sid")) {
-            $NtuserDat = Join-Path $p.LocalPath 'NTUSER.DAT'
-            if (Test-Path $NtuserDat) {
-                $null = reg load "HKU\$sid" $NtuserDat 2>&1
-                $HiveLoaded = $true
-                Start-Sleep -Milliseconds 500
-            } else {
-                continue
+            $UserApps += [PSCustomObject]@{
+                DisplayName     = $entry.DisplayName
+                DisplayVersion  = $entry.DisplayVersion
+                Publisher       = $entry.Publisher
+                InstallDate     = $entry.InstallDate
+                InstallLocation = $entry.InstallLocation
+                InstallerType   = $installerType
+                Architecture    = 'User'
+                Scope           = "User:$folderName"
             }
         }
-
-        try {
-            $userRegPath = "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
-            $entries = Get-ItemProperty $userRegPath -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName }
-            foreach ($entry in $entries) {
-                if (Test-IsNoise $entry.DisplayName) { continue }
-
-                $installerType = 'EXE'
-                if ($entry.UninstallString -and $entry.UninstallString -match 'MsiExec') {
-                    $installerType = 'MSI'
-                }
-
-                $UserApps += [PSCustomObject]@{
-                    DisplayName     = $entry.DisplayName
-                    DisplayVersion  = $entry.DisplayVersion
-                    Publisher       = $entry.Publisher
-                    InstallDate     = $entry.InstallDate
-                    InstallLocation = $entry.InstallLocation
-                    InstallerType   = $installerType
-                    Architecture    = 'User'
-                    Scope           = "User:$folderName"
-                }
-            }
-        } catch {
-            Write-Log "Error reading user apps for $($folderName): $_" 'WARN'
-        } finally {
-            if ($HiveLoaded) {
-                [GC]::Collect()
-                Start-Sleep -Milliseconds 200
-                $null = reg unload "HKU\$sid" 2>&1
-            }
-        }
+    } catch {
+        Write-Log "Error reading user apps for $($folderName): $_" 'WARN'
+    } finally {
+        if ($HiveLoaded) { Dismount-UserHive -SID $sid }
     }
-} catch {
-    Write-ErrorLog "Profile enumeration failed: $_"
 }
 
 Write-Log "Found $($UserApps.Count) per-user applications."
