@@ -329,6 +329,9 @@ function Show-MainMenu { # Displays main menu with progress
     Write-Host ("  ║ {0} ║" -f '  [5]  View Session Summary'.PadRight($inner)) -ForegroundColor Gray
     Write-Host ("  ║ {0} ║" -f '  [6]  Export Report'.PadRight($inner)) -ForegroundColor Gray
     Write-Host ("  ║ {0} ║" -f '  [7]  Reset Session'.PadRight($inner)) -ForegroundColor Gray
+    if (Test-Path $SessionFile) {
+        Write-Host ("  ║ {0} ║" -f '  [8]  Push to Hudu'.PadRight($inner)) -ForegroundColor Gray
+    }
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ("  " + ('─' * ($inner - 4))).PadRight($inner)) -ForegroundColor DarkGray
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
@@ -490,6 +493,7 @@ function Show-StepListTable {
 #region --- Verdict Evaluation ---
 
 $script:PrimaryProfile = $null # Primary user profile (identified for KFM checks)
+$script:HuduBaseUrl    = $null # Hudu base URL (cached after first prompt)
 try {
     $vpSkipSIDs  = @('S-1-5-18', 'S-1-5-19', 'S-1-5-20') # System account SIDs to skip
     $vpSkipNames = @('ithlocal', 'itklocal', 'wsi', 'wsiaccount', 'defaultuser0', 'administrator', 'guest') # System/service account names
@@ -1583,6 +1587,62 @@ function Invoke-ResetSession { # Clears all progress and deletes session file
     Start-Sleep -Seconds 2
 }
 
+function Invoke-HuduReport {
+    Clear-Host
+    Write-Banner
+    Write-Host ''
+    Write-Host "  $('═' * 62)" -ForegroundColor Cyan
+    Write-Host '  PUSH TO HUDU' -ForegroundColor White
+    Write-Host "  $('═' * 62)" -ForegroundColor Cyan
+    Write-Host ''
+
+    if (-not (Get-Module HuduAPI -ListAvailable -ErrorAction SilentlyContinue)) {
+        Write-Host '  HuduAPI module is not installed.' -ForegroundColor Yellow
+        Write-Host '  Install with: Install-Module HuduAPI -Scope CurrentUser' -ForegroundColor DarkGray
+        Write-Host ''
+        Write-Host -NoNewline '  [I] Install now    [N] Cancel  ' -ForegroundColor DarkCyan
+        $k = Read-MenuKey; Write-Host ''
+        if ($k -ne 'I') { return }
+        try {
+            Write-Host '  Installing HuduAPI...' -ForegroundColor Gray
+            Install-Module HuduAPI -Scope CurrentUser -Force -ErrorAction Stop
+            Write-Host '  Installed successfully.' -ForegroundColor Green
+        } catch {
+            Write-Host "  Install failed: $_" -ForegroundColor Red
+            Write-Host ''
+            Write-Host '  Press any key to return...' -ForegroundColor DarkGray
+            $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+            return
+        }
+    }
+
+    if (-not $script:HuduBaseUrl) {
+        Write-Host '  Hudu base URL (e.g. https://your-hudu.com): ' -ForegroundColor DarkCyan -NoNewline
+        $script:HuduBaseUrl = (Read-Host).Trim()
+        if (-not $script:HuduBaseUrl) { return }
+    } else {
+        Write-Host "  Using: $($script:HuduBaseUrl)" -ForegroundColor DarkGray
+    }
+
+    Write-Host ''
+    Write-Host '  Pushing report to Hudu...' -ForegroundColor Gray
+    Write-Host ''
+
+    $huduScript = Join-Path $PSScriptRoot 'Scripts\AutopilotReadiness\Report-AutopilotReadinessToHudu.ps1'
+    try {
+        & $huduScript -HuduBaseUrl $script:HuduBaseUrl
+        Write-Host ''
+        Write-Host '  Report pushed to Hudu successfully.' -ForegroundColor Green
+    } catch {
+        Write-Host ''
+        Write-Host "  Push failed: $_" -ForegroundColor Red
+    }
+
+    Write-Host ''
+    Write-Host '  Press any key to return to menu...' -ForegroundColor DarkGray
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+}
+
 #endregion
 
 #region --- Main Loop ---
@@ -1626,6 +1686,7 @@ try {
             '5' { Show-SessionSummary } # Show progress
             '6' { Export-SessionReport } # Export session
             '7' { Invoke-ResetSession } # Reset progress
+            '8' { if (Test-Path $SessionFile) { Invoke-HuduReport } } # Push to Hudu
             'Q' { $running = $false } # Quit
         }
     }
