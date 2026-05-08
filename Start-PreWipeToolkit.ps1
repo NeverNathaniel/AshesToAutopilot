@@ -292,7 +292,6 @@ function Get-ProgressBarString { # Renders filled progress bar
 
 function Show-MainMenu { # Displays main menu with progress
     $done  = @($script:Steps | Where-Object { $_.Status -eq 'DONE' }).Count # Count completed steps
-    $fail  = @($script:Steps | Where-Object { $_.Status -eq 'FAIL' }).Count # Count failed steps
     $total = $script:Steps.Count # Total step count
 
     $warnV = @($script:Steps | Where-Object {
