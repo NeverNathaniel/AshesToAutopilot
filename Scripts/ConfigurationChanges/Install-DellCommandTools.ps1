@@ -33,6 +33,7 @@ param(
 #region --- Init ---
 $ScriptName = 'Install-DellCommandTools'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Find-DellCommandTool.ps1')
 $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
@@ -74,26 +75,6 @@ function Get-InstalledVersion {
     return $null
 }
 
-function Get-DCUExePath {
-    $candidates = @(
-        "$env:ProgramFiles\Dell\CommandUpdate\dcu-cli.exe",
-        "${env:ProgramFiles(x86)}\Dell\CommandUpdate\dcu-cli.exe",
-        "$env:ProgramData\Dell\CommandUpdate\dcu-cli.exe"
-    )
-    foreach ($p in $candidates) { if (Test-Path $p) { return $p } }
-    return $null
-}
-
-function Get-DCCExePath {
-    $candidates = @(
-        "$env:ProgramFiles\Dell\Command Configure\X86_64\cctk.exe",
-        "$env:ProgramFiles\Dell\Command Configure\cctk.exe",
-        "${env:ProgramFiles(x86)}\Dell\Command Configure\X86_64\cctk.exe",
-        "${env:ProgramFiles(x86)}\Dell\Command Configure\cctk.exe"
-    )
-    foreach ($p in $candidates) { if (Test-Path $p) { return $p } }
-    return $null
-}
 #endregion
 
 #region --- DCU Install/Verify ---
@@ -109,7 +90,7 @@ $DCUResult = [PSCustomObject]@{
 try {
     Write-Log "Checking Dell Command Update installation..."
     $DCUVersion = Get-InstalledVersion -DisplayNamePattern '*Dell Command Update*'
-    $DCUExe     = Get-DCUExePath
+    $DCUExe     = Find-DellCommandUpdate
 
     if ($DCUVersion -and $DCUExe) {
         Write-Log "DCU found: version $DCUVersion at $DCUExe"
@@ -187,7 +168,7 @@ $DCCResult = [PSCustomObject]@{
 try {
     Write-Log "Checking Dell Command Configure installation..."
     $DCCVersion = Get-InstalledVersion -DisplayNamePattern '*Dell Command Configure*'
-    $DCCExe     = Get-DCCExePath
+    $DCCExe     = Find-DellCommandConfigure
 
     if ($DCCVersion -and $DCCExe) {
         Write-Log "DCC found: version $DCCVersion at $DCCExe"

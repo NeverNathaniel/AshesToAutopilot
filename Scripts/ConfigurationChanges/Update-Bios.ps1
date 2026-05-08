@@ -36,6 +36,7 @@ param(
 #region --- Init ---
 $ScriptName = 'Update-Bios'
 . (Join-Path $PSScriptRoot '..\Common\Initialize-Toolkit.ps1')
+. (Join-Path $PSScriptRoot '..\Common\Find-DellCommandTool.ps1')
 $LogFile = "$LogDir\$ScriptName.log"
 if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
@@ -64,12 +65,7 @@ Write-Log "Dell device confirmed: $Manufacturer"
 #endregion
 
 #region --- DCU Check ---
-$DCUPaths = @(
-    "$env:ProgramFiles\Dell\CommandUpdate\dcu-cli.exe",
-    "${env:ProgramFiles(x86)}\Dell\CommandUpdate\dcu-cli.exe"
-)
-$DCUExe = $null
-foreach ($p in $DCUPaths) { if (Test-Path $p) { $DCUExe = $p; break } }
+$DCUExe = Find-DellCommandUpdate
 
 if (-not $DCUExe) {
     $msg = "Dell Command Update not found. Run Install-DellCommandTools.ps1 first."
