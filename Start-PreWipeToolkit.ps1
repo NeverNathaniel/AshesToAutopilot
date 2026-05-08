@@ -800,7 +800,7 @@ function Get-HtmlTable { # Extracts data table from step output
                 }
             }
             '*Get-InstalledApplications*' {
-                if ($Parsed.Applications) { $cols = @('DisplayName','DisplayVersion','Publisher','Scope'); $rows = @($Parsed.Applications | Select-Object -First 10) }
+                if ($Parsed.Applications) { $cols = @('DisplayName','DisplayVersion','Publisher','Scope'); $rows = @($Parsed.Applications) }
             }
             '*Get-StorageMode*' {
                 if ($Parsed.Disks) { $cols = @('Model','MediaType','InterfaceType'); $rows = @($Parsed.Disks) }
@@ -838,8 +838,7 @@ function Get-HtmlTable { # Extracts data table from step output
     $null = $html.Append('<tr>')
     foreach ($c in $cols) { $null = $html.Append("<th>$([System.Web.HttpUtility]::HtmlEncode($c))</th>") }
     $null = $html.AppendLine('</tr>')
-    $limit = [Math]::Min($rows.Count, 15)
-    for ($i = 0; $i -lt $limit; $i++) {
+    for ($i = 0; $i -lt $rows.Count; $i++) {
         $null = $html.Append('<tr>')
         foreach ($c in $cols) {
             $val = $rows[$i].$c
@@ -848,11 +847,13 @@ function Get-HtmlTable { # Extracts data table from step output
         }
         $null = $html.AppendLine('</tr>')
     }
-    if ($rows.Count -gt 15) {
-        $null = $html.AppendLine("<tr><td colspan='$($cols.Count)' style='color:var(--muted);font-style:italic'>… and $($rows.Count - 15) more rows</td></tr>")
-    }
     $null = $html.AppendLine('</table>')
-    return $html.ToString()
+
+    $tableStr = $html.ToString()
+    if ($ScriptFile -match 'Get-InstalledApplications' -and $rows.Count -gt 0) {
+        return "<details><summary>Show all $($rows.Count) applications &#8250;</summary>$tableStr</details>"
+    }
+    return $tableStr
 }
 
 function Get-ActionInstruction {
