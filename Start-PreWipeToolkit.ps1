@@ -855,6 +855,22 @@ function Get-HtmlTable { # Extracts data table from step output
     return $html.ToString()
 }
 
+function Get-ActionInstruction {
+    param([string]$ScriptFile, [string]$VerdictReason)
+    switch -Wildcard ($ScriptFile) {
+        '*Test-OneDriveSyncStatus*' { return 'Open OneDrive and wait for full sync to complete. Do not wipe until all files are uploaded.' }
+        '*Test-OneDriveKFM*'        { return 'Enable Known Folder Move for the affected profile: OneDrive tray icon &rsaquo; Settings &rsaquo; Backup &rsaquo; Manage backup.' }
+        '*Find-UnbackedData*'       { return 'Review flagged files with the user and manually back up anything not in OneDrive before wiping.' }
+        '*Backup-BrowserBookmarks*' { return 'Remind the user to sign into their browser on the new device to restore synced bookmarks.' }
+        '*Test-BitLockerEscrow*'    { return 'Re-run step 23 to escrow the BitLocker key to Entra ID. Do not wipe until the key is backed up.' }
+        '*Test-AutopilotReadiness*' { return 'Device does not meet Autopilot hardware requirements. Check TPM version, UEFI mode, and Secure Boot status before proceeding.' }
+        '*Get-AutopilotAssignment*' { return 'Assign the device an Autopilot profile in Intune (Devices &rsaquo; Enrollment &rsaquo; Autopilot) before wiping.' }
+        '*Register-AutopilotDevice*'{ return 'Hardware hash upload failed. Re-run step 30. If the issue persists, upload the hash CSV manually via Intune.' }
+        '*Get-DownloadsSize*'       { return 'Auto-copy to Documents failed. Manually copy the Downloads folder contents to a safe location before wiping.' }
+        default                     { return [System.Web.HttpUtility]::HtmlEncode($VerdictReason) }
+    }
+}
+
 function Export-HtmlReport { # Generates styled HTML report from results
     param([PSCustomObject[]]$ResultSet, [string]$RunLabel = 'Run') # Result set and run label
 
@@ -951,6 +967,24 @@ function Export-HtmlReport { # Generates styled HTML report from results
         $null = $sb.AppendLine('</div>')
     }
     $null = $sb.AppendLine('</div>')
+
+    $actionItems = @($ResultSet | Where-Object { $_.Verdict -eq 'FAIL' -or $_.Verdict -eq 'WARN' })
+    if ($actionItems.Count -gt 0) {
+        $null = $sb.AppendLine("<div class='action-panel'>")
+        $null = $sb.AppendLine("<h3>&#9888; Action Items Before Wipe</h3>")
+        foreach ($ai in $actionItems) {
+            $iconClass = if ($ai.Verdict -eq 'FAIL') { 'fail' } else { 'warn' }
+            $iconChar  = if ($ai.Verdict -eq 'FAIL') { '&#10007;' } else { '&#9888;' }
+            $label     = [System.Web.HttpUtility]::HtmlEncode($ai.DisplayName)
+            $reason    = [System.Web.HttpUtility]::HtmlEncode($ai.VerdictReason)
+            $instr     = Get-ActionInstruction -ScriptFile $ai.ScriptPath -VerdictReason $ai.VerdictReason
+            $null = $sb.AppendLine("<div class='action-item'>")
+            $null = $sb.AppendLine("<div class='action-icon $iconClass'>$iconChar</div>")
+            $null = $sb.AppendLine("<div><div class='action-label'>$label &mdash; $reason</div><div class='action-detail'>$instr</div></div>")
+            $null = $sb.AppendLine("</div>")
+        }
+        $null = $sb.AppendLine("</div>")
+    }
 
     foreach ($r in $ResultSet) {
         $sc   = switch ($r.Status)  { 'DONE' { 'done' } 'FAIL' { 'fail' } 'SKIP' { 'skip' } default { 'skip' } }
