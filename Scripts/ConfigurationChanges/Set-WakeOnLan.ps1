@@ -159,7 +159,7 @@ $Result = [PSCustomObject]@{
     Changes     = $Changes
 }
 
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\WakeOnLan-SetResult.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\WakeOnLan-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5

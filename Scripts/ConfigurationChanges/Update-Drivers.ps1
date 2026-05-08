@@ -142,7 +142,7 @@ try {
 #endregion
 
 #region --- Output ---
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\DriverUpdate-Result.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\DriverUpdate-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5

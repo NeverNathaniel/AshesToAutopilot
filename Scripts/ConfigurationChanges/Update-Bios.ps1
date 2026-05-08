@@ -145,7 +145,7 @@ try {
 #endregion
 
 #region --- Output ---
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\BiosUpdate-Result.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\BiosUpdate-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5

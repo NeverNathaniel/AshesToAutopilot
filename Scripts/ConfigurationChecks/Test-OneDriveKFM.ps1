@@ -192,7 +192,7 @@ $Summary = [PSCustomObject]@{
     Results        = $Results
 }
 
-$Summary | ConvertTo-Json -Depth 10 | Out-File "$OutputRoot\Logs\OneDriveKFM-Status.json" -Force
+$Summary | ConvertTo-Json -Depth 10 | Out-File "$OutputRoot\Logs\OneDriveKFM-Report.json" -Force
 
 $anyKfmIssue = $Results | Where-Object { $_.Issues.Count -gt 0 }
 
@@ -208,7 +208,7 @@ if ($NonInteractive) {
         Write-Host "  $($r.Profile): Desktop=$($r.KFM_Desktop) | Docs=$($r.KFM_Documents) | Pics=$($r.KFM_Pictures) | Sync=$($r.SyncStatus)$issueStr" -ForegroundColor $lineColor
     }
     Write-Host ""
-    Write-Host "Full report: $OutputRoot\Logs\OneDriveKFM-Status.json"
+    Write-Host "Full report: $OutputRoot\Logs\OneDriveKFM-Report.json"
     Write-Host ""
 }
 #endregion

@@ -39,9 +39,9 @@ if (-not (Test-AdminElevation)) { exit 1 }
 # Map each expected JSON file to its phase, script name, and how to extract status
 $ScriptMap = [ordered]@{
     # Scan, Check & Backup
-    'DellCommandTools-Status.json'       = @{ Phase = 'ScanCheckBackup'; Script = 'Install-DellCommandTools'; StatusPath = 'DCU.Success' }
+    'DellCommandTools-Report.json'       = @{ Phase = 'ScanCheckBackup'; Script = 'Install-DellCommandTools'; StatusPath = 'DCU.Success' }
     'WindowsProductKey-Report.json'      = @{ Phase = 'ScanCheckBackup'; Script = 'Get-WindowsProductKey'; StatusPath = 'HasOEMKey' }
-    'OneDriveKFM-Status.json'            = @{ Phase = 'ScanCheckBackup'; Script = 'Test-OneDriveKFM'; StatusPath = 'ProfilesChecked' }
+    'OneDriveKFM-Report.json'            = @{ Phase = 'ScanCheckBackup'; Script = 'Test-OneDriveKFM'; StatusPath = 'ProfilesChecked' }
     'OneDriveSyncStatus-Report.json'     = @{ Phase = 'ScanCheckBackup'; Script = 'Test-OneDriveSyncStatus'; StatusPath = 'OverallVerdict' }
     'DownloadsSize.json'                 = @{ Phase = 'ScanCheckBackup'; Script = 'Get-DownloadsSize'; StatusPath = 'ProfilesChecked' }
     'BrowserBookmarks-Report.json'       = @{ Phase = 'ScanCheckBackup'; Script = 'Backup-BrowserBookmarks'; StatusPath = 'TotalBackedUp' }
@@ -61,10 +61,10 @@ $ScriptMap = [ordered]@{
     'DeviceHealth-Report.json'           = @{ Phase = 'ScanCheckBackup'; Script = 'Get-DeviceHealth'; StatusPath = 'OverallStatus' }
     # Configure
     'BitLockerEscrow-Report.json'        = @{ Phase = 'Configure'; Script = 'Test-BitLockerEscrow'; StatusPath = 'AllEscrowed' }
-    'WakeOnLan-SetResult.json'           = @{ Phase = 'Configure'; Script = 'Set-WakeOnLan'; StatusPath = 'Success' }
+    'WakeOnLan-Report.json'           = @{ Phase = 'Configure'; Script = 'Set-WakeOnLan'; StatusPath = 'Success' }
     # Install & Update
-    'BiosUpdate-Result.json'             = @{ Phase = 'InstallUpdate'; Script = 'Update-Bios'; StatusPath = 'Success' }
-    'DriverUpdate-Result.json'           = @{ Phase = 'InstallUpdate'; Script = 'Update-Drivers'; StatusPath = 'Success' }
+    'BiosUpdate-Report.json'             = @{ Phase = 'InstallUpdate'; Script = 'Update-Bios'; StatusPath = 'Success' }
+    'DriverUpdate-Report.json'           = @{ Phase = 'InstallUpdate'; Script = 'Update-Drivers'; StatusPath = 'Success' }
     # Autopilot
     'AutopilotReadiness-Report.json'     = @{ Phase = 'Autopilot'; Script = 'Test-AutopilotReadiness'; StatusPath = 'OverallStatus' }
     'AutopilotRegister-Result.json'      = @{ Phase = 'Autopilot'; Script = 'Register-AutopilotDevice'; StatusPath = 'Success' }

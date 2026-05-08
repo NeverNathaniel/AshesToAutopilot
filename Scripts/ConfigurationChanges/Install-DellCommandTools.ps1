@@ -215,7 +215,7 @@ $Result = [PSCustomObject]@{
     DCC        = $DCCResult
 }
 
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\DellCommandTools-Status.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\DellCommandTools-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
