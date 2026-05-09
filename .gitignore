@@ -1,9 +1,10 @@
 # Mac
 .DS_Store
 
-# Claude
+# Claude / dev tooling
 .claude/
 CLAUDE.md
+.mcp.json
 
 # Reference material (not part of this project)
 Source Repos/
@@ -13,3 +14,9 @@ progress.md
 
 # Git worktrees
 .worktrees/
+
+# Internal planning docs
+docs/superpowers/
+
+# Release artifacts (attach to GitHub releases, don't commit)
+*.zip
