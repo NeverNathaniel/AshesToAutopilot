@@ -31,6 +31,8 @@
 [CmdletBinding()]
 param([switch]$NonInteractive) # Non-interactive mode emits JSON to stdout only
 
+Get-ChildItem -Path $PSScriptRoot -Filter '*.ps1' -Recurse | Unblock-File -ErrorAction SilentlyContinue
+
 $script:ToolkitRoot = $PSScriptRoot
 . (Join-Path $PSScriptRoot 'Scripts\Common\Toolkit-UI.ps1')
 . (Join-Path $PSScriptRoot 'Scripts\Common\Toolkit-Report.ps1')

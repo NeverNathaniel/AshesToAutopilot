@@ -4,6 +4,23 @@ A PowerShell toolkit for preparing Windows devices for wipe and Autopilot re-enr
 
 ---
 
+## Installation
+
+Download the latest release zip, extract it, and run the orchestrator from an elevated PowerShell prompt:
+
+```powershell
+# From an elevated PowerShell prompt
+$dest = "C:\AshesToAutopilot"
+Invoke-WebRequest -Uri "https://github.com/NeverNathaniel/AshesToAutopilot/releases/latest/download/AshesToAutopilot.zip" -OutFile "$env:TEMP\AshesToAutopilot.zip"
+Expand-Archive -Path "$env:TEMP\AshesToAutopilot.zip" -DestinationPath $dest -Force
+Set-Location $dest
+.\Start-PreWipeToolkit.ps1
+```
+
+The script automatically unblocks all `.ps1` files on first run, so no execution policy changes are required.
+
+---
+
 ## Quick Start
 
 Launch the interactive orchestrator from an elevated PowerShell prompt:
@@ -22,6 +39,7 @@ This opens a numbered menu. Press a key to select:
 [5]  View Session Summary
 [6]  Export Report
 [7]  Reset Session
+[8]  Push to Hudu      post report to Hudu (requires HuduAPI module)
 [Q]  Quit
 ```
 
@@ -128,7 +146,7 @@ These scripts write files to the output folder. They live in `Scripts/Configurat
 ### Report-AutopilotReadinessToHudu.ps1
 
 Posts a structured pre-wipe readiness report to a Hudu IT documentation instance.
-This script is **not part of the orchestrated workflow** and must be run manually after `Start-PreWipeToolkit.ps1` completes.
+This script can be triggered from the main menu with `[8] Push to Hudu`, or run manually after `Start-PreWipeToolkit.ps1` completes.
 
 **Prerequisites:**
 - The `HuduAPI` PowerShell module: `Install-Module HuduAPI`
@@ -177,6 +195,9 @@ The orchestrator also supports `-NonInteractive` — it emits current session st
 Start-PreWipeToolkit.ps1           # Main orchestrator (run this)
 Scripts/
 ├── Common/                        # Shared helper functions
+│   ├── Toolkit-UI.ps1             # Terminal display and menu rendering
+│   ├── Toolkit-Report.ps1         # HTML report and session export
+│   ├── Toolkit-Execution.ps1      # Step execution engine
 │   ├── Initialize-Toolkit.ps1     # Write-Log, Test-AdminElevation
 │   ├── Get-ActiveUserProfile.ps1  # Profile enumeration, hive mounting
 │   └── Find-DellCommandTool.ps1   # Dell tool discovery
