@@ -41,7 +41,6 @@ This opens a numbered menu. Press a key to select:
 [5]  View Session Summary
 [6]  Export Report
 [7]  Reset Session
-[8]  Push to Hudu      post report to Hudu (requires HuduAPI module)
 [Q]  Quit
 ```
 
@@ -147,8 +146,7 @@ These scripts write files to the output folder. They live in `Scripts/Configurat
 
 ### Report-AutopilotReadinessToHudu.ps1
 
-Posts a structured pre-wipe readiness report to a Hudu IT documentation instance.
-This script can be triggered from the main menu with `[8] Push to Hudu`, or run manually after `Start-PreWipeToolkit.ps1` completes.
+Posts a structured pre-wipe readiness report to a Hudu IT documentation instance. Run manually after `Start-PreWipeToolkit.ps1` completes.
 
 **Prerequisites:**
 - The `HuduAPI` PowerShell module: `Install-Module HuduAPI`

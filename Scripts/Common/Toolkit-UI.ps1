@@ -112,13 +112,23 @@ function Show-MainMenu { # Displays main menu with progress
     $inner   = 56
     $bar     = '═' * ($inner + 2)
     $progBar = Get-ProgressBarString -Done $done -Total $total -Width 24
-    $warnStr = if ($warnV -gt 0) { "  [!!] $warnV" } else { '' }
-    $failStr = if ($failV -gt 0) { "  [XX] $failV" } else { '' }
-    $progTxt = "$progBar  $done/$total complete$warnStr$failStr"
+    $progTxt = "$progBar  $done/$total complete"
 
     Write-Host "  ╔$bar╗" -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ("  $($script:ComputerName)  ·  SN: $($script:SerialNumber)  ·  $($script:CurrentUser)").PadRight($inner)) -ForegroundColor DarkGray
     Write-Host ("  ║ {0} ║" -f ("  $progTxt").PadRight($inner)) -ForegroundColor Cyan
+    if ($warnV -gt 0 -or $failV -gt 0) {
+        $warnPart = if ($warnV -gt 0) { "[!!] $warnV" } else { '' }
+        $failPart = if ($failV -gt 0) { "[XX] $failV" } else { '' }
+        $sep      = if ($warnV -gt 0 -and $failV -gt 0) { '   ' } else { '' }
+        $pad      = ' ' * ($inner - 2 - $warnPart.Length - $sep.Length - $failPart.Length)
+        Write-Host -NoNewline "  ║ " -ForegroundColor Cyan
+        Write-Host -NoNewline "  "
+        if ($warnPart) { Write-Host -NoNewline $warnPart -ForegroundColor Yellow }
+        if ($sep)      { Write-Host -NoNewline $sep }
+        if ($failPart) { Write-Host -NoNewline $failPart -ForegroundColor Red }
+        Write-Host "$pad ║" -ForegroundColor Cyan
+    }
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
     Write-Host "  ╠$bar╣" -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
@@ -132,9 +142,6 @@ function Show-MainMenu { # Displays main menu with progress
     Write-Host ("  ║ {0} ║" -f '  [5]  View Session Summary'.PadRight($inner)) -ForegroundColor Gray
     Write-Host ("  ║ {0} ║" -f '  [6]  Export Report'.PadRight($inner)) -ForegroundColor Gray
     Write-Host ("  ║ {0} ║" -f '  [7]  Reset Session'.PadRight($inner)) -ForegroundColor Gray
-    if (Test-Path $SessionFile) {
-        Write-Host ("  ║ {0} ║" -f '  [8]  Push to Hudu'.PadRight($inner)) -ForegroundColor Gray
-    }
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ("  " + ('─' * ($inner - 4))).PadRight($inner)) -ForegroundColor DarkGray
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
