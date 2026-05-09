@@ -1,0 +1,2 @@
+# Exclude internal planning docs from git archive exports
+docs/superpowers/ export-ignore

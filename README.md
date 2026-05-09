@@ -17,7 +17,9 @@ Set-Location $dest
 .\Start-PreWipeToolkit.ps1
 ```
 
-The script automatically unblocks all `.ps1` files on first run, so no execution policy changes are required.
+No execution policy changes required — the toolkit unblocks all scripts automatically on first run.
+
+> **For each release:** build the zip with `git archive --format=zip --output=AshesToAutopilot.zip HEAD` and attach it to the GitHub release as `AshesToAutopilot.zip`.
 
 ---
 
