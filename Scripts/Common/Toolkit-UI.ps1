@@ -109,47 +109,42 @@ function Show-MainMenu { # Displays main menu with progress
     Clear-Host # Clear screen
     Show-InitialBanner # Show banner (full on first run, compact after)
 
-    $inner   = 56
+    $inner   = 62
     $bar     = '═' * ($inner + 2)
     $progBar = Get-ProgressBarString -Done $done -Total $total -Width 24
-    $progTxt = "$progBar  $done/$total complete"
+    $baseTxt = "  $progBar  $done/$total complete"
+    $warnPart = if ($warnV -gt 0) { "  [!!] $warnV" } else { '' }
+    $failPart = if ($failV -gt 0) { "  [XX] $failV" } else { '' }
+    $pad      = ' ' * [Math]::Max(0, $inner - $baseTxt.Length - $warnPart.Length - $failPart.Length)
 
     Write-Host "  ╔$bar╗" -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f ("  $($script:ComputerName)  ·  SN: $($script:SerialNumber)  ·  $($script:CurrentUser)").PadRight($inner)) -ForegroundColor DarkGray
-    Write-Host ("  ║ {0} ║" -f ("  $progTxt").PadRight($inner)) -ForegroundColor Cyan
-    if ($warnV -gt 0 -or $failV -gt 0) {
-        $warnPart = if ($warnV -gt 0) { "[!!] $warnV" } else { '' }
-        $failPart = if ($failV -gt 0) { "[XX] $failV" } else { '' }
-        $sep      = if ($warnV -gt 0 -and $failV -gt 0) { '   ' } else { '' }
-        $pad      = ' ' * ($inner - 2 - $warnPart.Length - $sep.Length - $failPart.Length)
-        Write-Host -NoNewline "  ║ " -ForegroundColor Cyan
-        Write-Host -NoNewline "  "
-        if ($warnPart) { Write-Host -NoNewline $warnPart -ForegroundColor Yellow }
-        if ($sep)      { Write-Host -NoNewline $sep }
-        if ($failPart) { Write-Host -NoNewline $failPart -ForegroundColor Red }
-        Write-Host "$pad ║" -ForegroundColor Cyan
-    }
+    Write-Host ("  ║ {0} ║" -f ("  $($script:ComputerName)  ·  SN: $($script:SerialNumber)  ·  $($script:CurrentUser)").PadRight($inner)) -ForegroundColor Cyan
+    Write-Host -NoNewline "  ║ " -ForegroundColor Cyan
+    Write-Host -NoNewline $baseTxt -ForegroundColor Cyan
+    if ($warnPart) { Write-Host -NoNewline $warnPart -ForegroundColor Yellow }
+    if ($failPart) { Write-Host -NoNewline $failPart -ForegroundColor Red }
+    Write-Host "$pad ║" -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
     Write-Host "  ╠$bar╣" -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [1]  Quick Check       12 core steps'.PadRight($inner)) -ForegroundColor White
-    Write-Host ("  ║ {0} ║" -f '  [2]  Full Prep         all 31 steps'.PadRight($inner)) -ForegroundColor White
-    Write-Host ("  ║ {0} ║" -f '  [3]  Run Single Step'.PadRight($inner)) -ForegroundColor White
-    Write-Host ("  ║ {0} ║" -f '  [4]  Custom Run        choose steps'.PadRight($inner)) -ForegroundColor White
+    Write-Host ("  ║ {0} ║" -f '  [1]  Quick Check       12 core steps'.PadRight($inner)) -ForegroundColor Cyan
+    Write-Host ("  ║ {0} ║" -f '  [2]  Full Prep         all 31 steps'.PadRight($inner)) -ForegroundColor Cyan
+    Write-Host ("  ║ {0} ║" -f '  [3]  Run Single Step'.PadRight($inner)) -ForegroundColor Cyan
+    Write-Host ("  ║ {0} ║" -f '  [4]  Custom Run        choose steps'.PadRight($inner)) -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f ("  " + ('─' * ($inner - 4))).PadRight($inner)) -ForegroundColor DarkGray
+    Write-Host ("  ║ {0} ║" -f ("  " + ('─' * ($inner - 4))).PadRight($inner)) -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [5]  View Session Summary'.PadRight($inner)) -ForegroundColor Gray
-    Write-Host ("  ║ {0} ║" -f '  [6]  Export Report'.PadRight($inner)) -ForegroundColor Gray
-    Write-Host ("  ║ {0} ║" -f '  [7]  Reset Session'.PadRight($inner)) -ForegroundColor Gray
+    Write-Host ("  ║ {0} ║" -f '  [5]  View Session Summary'.PadRight($inner)) -ForegroundColor Cyan
+    Write-Host ("  ║ {0} ║" -f '  [6]  Export Report'.PadRight($inner)) -ForegroundColor Cyan
+    Write-Host ("  ║ {0} ║" -f '  [7]  Reset Session'.PadRight($inner)) -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f ("  " + ('─' * ($inner - 4))).PadRight($inner)) -ForegroundColor DarkGray
+    Write-Host ("  ║ {0} ║" -f ("  " + ('─' * ($inner - 4))).PadRight($inner)) -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [Q]  Quit'.PadRight($inner)) -ForegroundColor DarkGray
+    Write-Host ("  ║ {0} ║" -f '  [Q]  Quit'.PadRight($inner)) -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
     Write-Host "  ╚$bar╝" -ForegroundColor Cyan
     Write-Host ''
-    Write-Host '  Press a key › ' -ForegroundColor DarkCyan -NoNewline
+    Write-Host '  Press a key › ' -ForegroundColor Cyan -NoNewline
 }
 
 function Write-RunHeader { # Displays run mode header
