@@ -117,8 +117,15 @@ function Show-MainMenu { # Displays main menu with progress
     $failPart = if ($failV -gt 0) { "  [XX] $failV" } else { '' }
     $pad      = ' ' * [Math]::Max(0, $inner - $baseTxt.Length - $warnPart.Length - $failPart.Length)
 
+    # Helper: render a box content line with Cyan borders and custom text color
+    function Write-MenuLine([string]$Text, [string]$Color) {
+        Write-Host -NoNewline "  ║ " -ForegroundColor Cyan
+        Write-Host -NoNewline $Text.PadRight($inner) -ForegroundColor $Color
+        Write-Host " ║" -ForegroundColor Cyan
+    }
+
     Write-Host "  ╔$bar╗" -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f ("  $($script:ComputerName)  ·  SN: $($script:SerialNumber)  ·  $($script:CurrentUser)").PadRight($inner)) -ForegroundColor Cyan
+    Write-MenuLine "  $($script:ComputerName)  ·  SN: $($script:SerialNumber)  ·  $($script:CurrentUser)" DarkGray
     Write-Host -NoNewline "  ║ " -ForegroundColor Cyan
     Write-Host -NoNewline $baseTxt -ForegroundColor Cyan
     if ($warnPart) { Write-Host -NoNewline $warnPart -ForegroundColor Yellow }
@@ -127,24 +134,24 @@ function Show-MainMenu { # Displays main menu with progress
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
     Write-Host "  ╠$bar╣" -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [1]  Quick Check       12 core steps'.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [2]  Full Prep         all 31 steps'.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [3]  Run Single Step'.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [4]  Custom Run        choose steps'.PadRight($inner)) -ForegroundColor Cyan
+    Write-MenuLine '  [1]  Quick Check       12 core steps' White
+    Write-MenuLine '  [2]  Full Prep         all 31 steps'  White
+    Write-MenuLine '  [3]  Run Single Step'                 White
+    Write-MenuLine '  [4]  Custom Run        choose steps'  White
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f ("  " + ('─' * ($inner - 4))).PadRight($inner)) -ForegroundColor Cyan
+    Write-MenuLine ("  " + ('─' * ($inner - 4))) DarkGray
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [5]  View Session Summary'.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [6]  Export Report'.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [7]  Reset Session'.PadRight($inner)) -ForegroundColor Cyan
+    Write-MenuLine '  [5]  View Session Summary' Gray
+    Write-MenuLine '  [6]  Export Report'        Gray
+    Write-MenuLine '  [7]  Reset Session'        Gray
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f ("  " + ('─' * ($inner - 4))).PadRight($inner)) -ForegroundColor Cyan
+    Write-MenuLine ("  " + ('─' * ($inner - 4))) DarkGray
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
-    Write-Host ("  ║ {0} ║" -f '  [Q]  Quit'.PadRight($inner)) -ForegroundColor Cyan
+    Write-MenuLine '  [Q]  Quit' DarkGray
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
     Write-Host "  ╚$bar╝" -ForegroundColor Cyan
     Write-Host ''
-    Write-Host '  Press a key › ' -ForegroundColor Cyan -NoNewline
+    Write-Host '  Press a key › ' -ForegroundColor DarkCyan -NoNewline
 }
 
 function Write-RunHeader { # Displays run mode header
