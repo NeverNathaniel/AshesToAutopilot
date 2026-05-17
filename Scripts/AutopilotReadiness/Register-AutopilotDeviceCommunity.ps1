@@ -1,35 +1,41 @@
 <#
 .SYNOPSIS
-    Registers device with Windows Autopilot using OAuth and the community module.
+    Registers this device with Windows Autopilot using the Andrew Taylor community
+    edition of get-windowsautopilotinfocommunity.ps1 with OAuth authentication.
 
 .DESCRIPTION
-    Uses the WindowsAutopilotIntuneCommunity module and Microsoft.Graph.Authentication
-    to register a device with full OAuth support.
+    Downloads the community script from GitHub (cached locally after first run),
+    installs the required microsoft.graph.authentication module, then:
 
-    Flow:
-      1. Installs WindowsAutopilotIntuneCommunity + Microsoft.Graph.Authentication
-      2. Collects hardware hash via MDM WMI class (falls back to Get-WindowsAutopilotInfo)
-      3. Authenticates via Connect-MgGraph: device code flow (interactive) or
-         client credentials (NonInteractive with -TenantId/-AppId/-AppSecret)
-      4. Registers device using Add-AutopilotImportedDevice from the community module
-         (falls back to direct Invoke-MgGraphRequest if module function unavailable)
-      5. Polls Get-AutopilotImportedDevice until complete, error, or 5-minute timeout
+    Interactive mode:
+      - Pre-authenticates via Connect-MgGraph device code flow so the sign-in
+        code is visible in the toolkit's retro terminal UI before the community
+        script runs. The community script then reuses the cached token silently.
+
+    NonInteractive mode (service principal):
+      - Requires -TenantId, -AppId, and -AppSecret. Passes them directly to the
+        community script which performs its own client-credentials OAuth flow.
+      - Without those parameters, exits with ImportStatus = 'NeedsInteractiveAuth'
+        so the orchestrator shows the correct remediation message.
+
+    The community script (get-windowsautopilotinfocommunity.ps1) handles:
+      - Hardware hash collection (MDM_DevDetail_Ext01 WMI)
+      - Device registration via Microsoft Graph Autopilot API
+      - Status polling until complete (30-second intervals)
+      - GroupTag and AssignedUser assignment
 
 .PARAMETER NonInteractive
-    Suppress prompts and emit structured JSON to stdout. Requires -TenantId, -AppId,
-    and -AppSecret for service principal authentication. Without those, exits with
-    ImportStatus = 'NeedsInteractiveAuth' so the orchestrator can surface the correct
-    remediation message.
+    Suppress prompts and emit structured JSON to stdout.
+    Requires -TenantId, -AppId, and -AppSecret.
 
 .PARAMETER GroupTag
-    Optional Autopilot Group Tag to assign to the device.
+    Optional Autopilot Group Tag to apply to the device.
 
 .PARAMETER AssignedUser
-    Optional UPN of the user to pre-assign in Autopilot.
+    Optional UPN to pre-assign in Autopilot.
 
 .PARAMETER TenantId
-    Azure AD Tenant ID. Optional for interactive (scopes auth to tenant);
-    required for NonInteractive service principal auth.
+    Azure AD Tenant ID. Required for NonInteractive service principal auth.
 
 .PARAMETER AppId
     App registration Client ID. Required for NonInteractive service principal auth.
@@ -37,28 +43,39 @@
 .PARAMETER AppSecret
     App registration Client Secret. Required for NonInteractive service principal auth.
 
+.PARAMETER CertificateThumbprint
+    Certificate thumbprint for app-based cert authentication (interactive or NonInteractive).
+    Requires -AppId and -TenantId.
+
+.PARAMETER CertificateSubjectName
+    Certificate subject name for app-based cert authentication (interactive or NonInteractive).
+    Requires -AppId and -TenantId.
+
 .EXAMPLE
     .\Register-AutopilotDeviceCommunity.ps1
-    .\Register-AutopilotDeviceCommunity.ps1 -GroupTag "CORP-WIPE" -AssignedUser "jdoe@contoso.com"
+    .\Register-AutopilotDeviceCommunity.ps1 -GroupTag "CORP-FLEET" -AssignedUser "jdoe@contoso.com"
     .\Register-AutopilotDeviceCommunity.ps1 -NonInteractive -TenantId "xxx" -AppId "yyy" -AppSecret "zzz"
 
 .NOTES
-    Modules:  WindowsAutopilotIntuneCommunity (Michael Niehaus, PSGallery)
-              Microsoft.Graph.Authentication (Microsoft, PSGallery)
-    Auth:     Connect-MgGraph device code (interactive) or ClientSecretCredential (SP)
-    Scope:    DeviceManagementServiceConfig.ReadWrite.All
-    Requires: Administrator, internet access, Intune admin or delegated Autopilot permissions
-    Output:   C:\PreWipeOutput\Logs\Register-AutopilotDeviceCommunity-Report.json
+    Community script: get-windowsautopilotinfocommunity.ps1 by Andrew Taylor
+    Source:  https://github.com/andrew-s-taylor/WindowsAutopilotInfo
+    Module:  microsoft.graph.authentication (max v2.9.1 per community script)
+    Scopes:  Device.ReadWrite.All, DeviceManagementManagedDevices.ReadWrite.All,
+             DeviceManagementServiceConfig.ReadWrite.All, DeviceManagementScripts.ReadWrite.All
+    Requires: Administrator, internet access, Intune admin permissions
+    Output:  C:\PreWipeOutput\Logs\Register-AutopilotDeviceCommunity-Report.json
 #>
 
 [CmdletBinding()]
 param(
     [switch]$NonInteractive,
-    [string]$GroupTag     = '',
-    [string]$AssignedUser = '',
-    [string]$TenantId     = '',
-    [string]$AppId        = '',
-    [string]$AppSecret    = ''
+    [string]$GroupTag              = '',
+    [string]$AssignedUser          = '',
+    [string]$TenantId              = '',
+    [string]$AppId                 = '',
+    [string]$AppSecret             = '',
+    [string]$CertificateThumbprint = '',
+    [string]$CertificateSubjectName = ''
 )
 
 #region --- Init ---
@@ -70,23 +87,18 @@ if (-not (Test-AdminElevation)) { exit 1 }
 
 #region --- Result ---
 $Result = [PSCustomObject]@{
-    Timestamp            = (Get-Date -Format 'o')
-    SerialNumber         = $null
-    HardwareHashLength   = 0
-    HashSource           = $null
-    CommunityModVersion  = $null
-    GraphModVersion      = $null
-    AuthMethod           = $null
-    AuthAccount          = $null
-    ImportId             = $null
-    ImportStatus         = $null
-    ImportErrorCode      = $null
-    ImportErrorName      = $null
-    DeviceRegistrationId = $null
-    GroupTag             = $GroupTag
-    AssignedUser         = $AssignedUser
-    Success              = $false
-    Error                = $null
+    Timestamp           = (Get-Date -Format 'o')
+    SerialNumber        = $null
+    CommunityScriptPath = $null
+    GraphModVersion     = $null
+    AuthMethod          = $null
+    AuthAccount         = $null
+    UploadStatus        = $null
+    GroupTag            = $GroupTag
+    AssignedUser        = $AssignedUser
+    CommunityOutput     = $null
+    Success             = $false
+    Error               = $null
 }
 #endregion
 
@@ -105,57 +117,52 @@ function Write-Wrn  { param([string]$m) if (-not $NonInteractive) { Write-Host "
 function Write-Err  { param([string]$m) if (-not $NonInteractive) { Write-Host "  [XX] $m" -ForegroundColor Red   } }
 #endregion
 
-#region --- Step 1: Module Setup ---
-Write-Section 'MODULE SETUP' 1 5
-Write-Log 'Verifying and installing required modules...'
+#region --- Step 1: Download community script + install module ---
+Write-Section 'COMMUNITY SCRIPT + MODULE SETUP' 1 4
+Write-Log 'Setting up community script and module...'
+
+$communityScriptUrl  = 'https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/main/Community%20Version/get-windowsautopilotinfocommunity.ps1'
+$communityScriptsDir = "$OutputRoot\Scripts"
+$communityScriptPath = "$communityScriptsDir\get-windowsautopilotinfocommunity.ps1"
+$Result.CommunityScriptPath = $communityScriptPath
+
+if (-not (Test-Path $communityScriptsDir)) {
+    New-Item -ItemType Directory -Path $communityScriptsDir -Force | Out-Null
+}
+
+try {
+    Write-Log "Downloading community script from GitHub..."
+    Write-Info "Downloading get-windowsautopilotinfocommunity.ps1 from GitHub..."
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $communityScriptUrl -OutFile $communityScriptPath -UseBasicParsing -ErrorAction Stop
+    Unblock-File -Path $communityScriptPath -ErrorAction SilentlyContinue
+    $scriptSize = [Math]::Round((Get-Item $communityScriptPath).Length / 1KB, 1)
+    Write-OK  "Community script downloaded ($scriptSize KB) → $communityScriptPath"
+    Write-Log "Community script downloaded ($scriptSize KB)"
+} catch {
+    Write-ErrorLog "Community script download failed: $_"
+    $Result.Error = "Community script download failed: $_"
+    Write-Err "Download failed: $_"
+    if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
+    exit 1
+}
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction SilentlyContinue
 
-    # Microsoft.Graph.Authentication — provides Connect-MgGraph and Invoke-MgGraphRequest
     $mgAuth = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable -ErrorAction SilentlyContinue |
         Sort-Object Version -Descending | Select-Object -First 1
     if (-not $mgAuth) {
         Write-Log  'Installing Microsoft.Graph.Authentication...'
         Write-Info 'Installing Microsoft.Graph.Authentication...'
-        Install-Module 'Microsoft.Graph.Authentication' -Force -Scope AllUsers -AllowClobber -ErrorAction Stop
-    } else {
-        Write-Log "Microsoft.Graph.Authentication found: v$($mgAuth.Version) — checking for updates..."
-        Update-Module 'Microsoft.Graph.Authentication' -Force -ErrorAction SilentlyContinue
+        Install-Module 'Microsoft.Graph.Authentication' -Force -Scope AllUsers -AllowClobber -MaximumVersion '2.9.1' -ErrorAction Stop
+        $mgAuth = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
     }
-    $mgAuth = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable |
-        Sort-Object Version -Descending | Select-Object -First 1
     $Result.GraphModVersion = $mgAuth.Version.ToString()
     Import-Module 'Microsoft.Graph.Authentication' -Force -ErrorAction Stop
     Write-OK  "Microsoft.Graph.Authentication v$($Result.GraphModVersion)"
     Write-Log "Microsoft.Graph.Authentication v$($Result.GraphModVersion) ready"
-
-    # WindowsAutopilotIntuneCommunity — provides Add/Get-AutopilotImportedDevice
-    $wpic = Get-Module 'WindowsAutopilotIntuneCommunity' -ListAvailable -ErrorAction SilentlyContinue |
-        Sort-Object Version -Descending | Select-Object -First 1
-    if (-not $wpic) {
-        Write-Log  'Installing WindowsAutopilotIntuneCommunity...'
-        Write-Info 'Installing WindowsAutopilotIntuneCommunity...'
-        Install-Module 'WindowsAutopilotIntuneCommunity' -Force -Scope AllUsers -AllowClobber -ErrorAction Stop
-        $wpic = Get-Module 'WindowsAutopilotIntuneCommunity' -ListAvailable |
-            Sort-Object Version -Descending | Select-Object -First 1
-    } else {
-        Write-Log "WindowsAutopilotIntuneCommunity found: v$($wpic.Version) — checking for updates..."
-        Update-Module 'WindowsAutopilotIntuneCommunity' -Force -ErrorAction SilentlyContinue
-        $wpic = Get-Module 'WindowsAutopilotIntuneCommunity' -ListAvailable |
-            Sort-Object Version -Descending | Select-Object -First 1
-    }
-    if ($wpic) {
-        $Result.CommunityModVersion = $wpic.Version.ToString()
-        Import-Module 'WindowsAutopilotIntuneCommunity' -Force -ErrorAction SilentlyContinue
-        Write-OK  "WindowsAutopilotIntuneCommunity v$($Result.CommunityModVersion)"
-        Write-Log "WindowsAutopilotIntuneCommunity v$($Result.CommunityModVersion) ready"
-    } else {
-        Write-Wrn 'WindowsAutopilotIntuneCommunity not available — will use Invoke-MgGraphRequest directly'
-        Write-Log 'WindowsAutopilotIntuneCommunity unavailable — falling back to direct Graph calls' -Level 'WARN'
-    }
-
 } catch {
     Write-ErrorLog "Module setup failed: $_"
     $Result.Error = "Module setup failed: $_"
@@ -165,277 +172,223 @@ try {
 }
 #endregion
 
-#region --- Step 2: Hardware Hash Collection ---
-Write-Section 'HARDWARE HASH COLLECTION' 2 5
-Write-Log 'Collecting hardware hash...'
-
-$hardwareHash = $null
-
+#region --- Step 2: Serial number ---
+Write-Section 'DEVICE IDENTIFICATION' 2 4
+Write-Log 'Querying device serial number...'
 try {
     $bios = Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop
     $Result.SerialNumber = $bios.SerialNumber.Trim()
     Write-Log "Serial Number: $($Result.SerialNumber)"
     Write-Info "Serial Number : $($Result.SerialNumber)"
-
-    # Primary: MDM WMI DMMap class — works on any Autopilot-capable device, no module needed
-    try {
-        $devDetail = Get-CimInstance -Namespace 'root/cimv2/mdm/dmmap' `
-            -ClassName 'MDM_DevDetail_Ext01' `
-            -Filter "InstanceID='Ext' AND ParentID='./DevDetail'" `
-            -ErrorAction Stop
-        $hardwareHash = $devDetail.DeviceHardwareData
-        if (-not $hardwareHash) { throw 'MDM_DevDetail_Ext01.DeviceHardwareData is empty' }
-        $Result.HardwareHashLength = $hardwareHash.Length
-        $Result.HashSource         = 'MDM_WMI'
-        Write-OK  "Hardware hash collected via WMI ($($hardwareHash.Length) chars)"
-        Write-Log "Hardware hash: MDM WMI — $($hardwareHash.Length) chars"
-    } catch {
-        # Fallback: Get-WindowsAutopilotInfo community module (hash-only, no upload)
-        Write-Log "MDM WMI unavailable ($($_.Exception.Message)) — falling back to Get-WindowsAutopilotInfo" -Level 'WARN'
-        Write-Wrn 'WMI hash class unavailable — collecting via Get-WindowsAutopilotInfo...'
-
-        $gwai = Get-Module 'Get-WindowsAutopilotInfo' -ListAvailable -ErrorAction SilentlyContinue |
-            Sort-Object Version -Descending | Select-Object -First 1
-        if (-not $gwai) {
-            Write-Info 'Installing Get-WindowsAutopilotInfo...'
-            Install-Module 'Get-WindowsAutopilotInfo' -Force -Scope AllUsers -AllowClobber -ErrorAction Stop
-        } else {
-            Update-Module 'Get-WindowsAutopilotInfo' -Force -ErrorAction SilentlyContinue
-        }
-        Import-Module 'Get-WindowsAutopilotInfo' -Force -ErrorAction Stop
-
-        $csvPath = "$OutputRoot\AutopilotHash_Community.csv"
-        Get-WindowsAutopilotInfo -OutputFile $csvPath -ErrorAction Stop
-        $csvData = Import-Csv $csvPath -ErrorAction Stop
-        $hashEntry = $csvData | Select-Object -First 1
-        $hardwareHash = $hashEntry.'Hardware Hash'
-        if (-not $hardwareHash) { throw 'Get-WindowsAutopilotInfo returned empty hardware hash' }
-        $Result.HardwareHashLength = $hardwareHash.Length
-        $Result.HashSource         = 'Get-WindowsAutopilotInfo'
-        Write-OK  "Hardware hash via community module ($($hardwareHash.Length) chars)"
-        Write-Log "Hardware hash: Get-WindowsAutopilotInfo — $($hardwareHash.Length) chars"
-    }
-
+    Write-Info "Computer Name : $env:COMPUTERNAME"
 } catch {
-    Write-ErrorLog "Hardware hash collection failed: $_"
-    $Result.Error = "Hardware hash collection failed: $_"
-    Write-Err "Failed to collect hardware hash: $_"
-    if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
-    exit 1
+    Write-Log "Could not query serial number: $_" -Level 'WARN'
+    Write-Wrn "Could not read serial number: $_"
 }
 #endregion
 
-#region --- Step 3: OAuth Authentication ---
-Write-Section 'OAUTH AUTHENTICATION — MICROSOFT GRAPH' 3 5
-Write-Log 'Starting Microsoft Graph authentication...'
+#region --- Step 3: OAuth pre-authentication (interactive mode only) ---
 
-# In NonInteractive mode without service principal credentials, we cannot do device code auth
-if ($NonInteractive -and (-not ($AppId -and $AppSecret -and $TenantId))) {
-    $msg = 'OAuth device code login requires interactive mode. Run this step via [3] Run Single Step. For automated auth, supply -TenantId, -AppId, and -AppSecret.'
+# In NonInteractive mode without credentials, we cannot authenticate interactively.
+if ($NonInteractive -and (-not $AppId) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)) {
+    $msg = 'OAuth device code login requires interactive mode. Run this step via [3] Run Single Step to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret (or a certificate).'
     Write-ErrorLog $msg
     $Result.Error        = $msg
-    $Result.ImportStatus = 'NeedsInteractiveAuth'
+    $Result.UploadStatus = 'NeedsInteractiveAuth'
     $Result | ConvertTo-Json -Depth 5
     exit 1
 }
 
-try {
-    if ($AppId -and $AppSecret -and $TenantId) {
-        # Service principal (client credentials) — usable in NonInteractive mode
-        Write-Log "Authenticating via service principal (TenantId: $TenantId, AppId: $AppId)..."
-        Write-Info 'Authenticating via service principal...'
-        $secSecret  = ConvertTo-SecureString $AppSecret -AsPlainText -Force
-        $credential = [PSCredential]::new($AppId, $secSecret)
-        Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $credential -ErrorAction Stop
-        $Result.AuthMethod = 'ServicePrincipal'
-        Write-Log 'Service principal auth succeeded'
-        Write-OK  'Authenticated via service principal'
-    } else {
-        # Interactive device code flow
-        Write-Log 'Starting device code authentication flow...'
-        if (-not $NonInteractive) {
-            Write-Host ''
-            Write-Host '  ╔══════════════════════════════════════════════════════════════╗' -ForegroundColor Cyan
-            Write-Host '  ║   SIGN IN REQUIRED — MICROSOFT GRAPH                         ║' -ForegroundColor Cyan
-            Write-Host '  ║                                                               ║' -ForegroundColor Cyan
-            Write-Host '  ║   Required permission:                                        ║' -ForegroundColor Cyan
-            Write-Host '  ║     DeviceManagementServiceConfig.ReadWrite.All               ║' -ForegroundColor Cyan
-            Write-Host '  ║                                                               ║' -ForegroundColor Cyan
-            Write-Host '  ║   A code will appear on the next line. Open any browser:     ║' -ForegroundColor Cyan
-            Write-Host '  ║     https://microsoft.com/devicelogin                        ║' -ForegroundColor Cyan
-            Write-Host '  ║   Enter the code and sign in with an Intune admin account.   ║' -ForegroundColor Cyan
-            Write-Host '  ╚══════════════════════════════════════════════════════════════╝' -ForegroundColor Cyan
-            Write-Host ''
-        }
+# Only pre-authenticate in interactive mode (no credentials supplied).
+# In SP/cert mode the community script handles auth itself.
+$usePreAuth = (-not $NonInteractive) -and (-not $AppId) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)
 
+if ($usePreAuth) {
+    Write-Section 'OAUTH AUTHENTICATION — DEVICE CODE LOGIN' 3 4
+    Write-Log 'Starting interactive device code authentication...'
+
+    Write-Host ''
+    Write-Host '  ╔══════════════════════════════════════════════════════════════╗' -ForegroundColor Cyan
+    Write-Host '  ║   SIGN IN REQUIRED — MICROSOFT GRAPH                         ║' -ForegroundColor Cyan
+    Write-Host '  ║                                                               ║' -ForegroundColor Cyan
+    Write-Host '  ║   A code will appear on the next line.                        ║' -ForegroundColor Cyan
+    Write-Host '  ║   Open a browser on any device and visit:                    ║' -ForegroundColor Cyan
+    Write-Host '  ║     https://microsoft.com/devicelogin                        ║' -ForegroundColor Cyan
+    Write-Host '  ║   Sign in with an account that has Intune admin access.      ║' -ForegroundColor Cyan
+    Write-Host '  ║                                                               ║' -ForegroundColor Cyan
+    Write-Host '  ║   Required scopes:                                            ║' -ForegroundColor Cyan
+    Write-Host '  ║     Device.ReadWrite.All                                      ║' -ForegroundColor Cyan
+    Write-Host '  ║     DeviceManagementManagedDevices.ReadWrite.All              ║' -ForegroundColor Cyan
+    Write-Host '  ║     DeviceManagementServiceConfig.ReadWrite.All               ║' -ForegroundColor Cyan
+    Write-Host '  ╚══════════════════════════════════════════════════════════════╝' -ForegroundColor Cyan
+    Write-Host ''
+
+    # Disable WAM to match the community script's own behaviour (device code works in console)
+    try { Set-MgGraphOption -DisableLoginByWAM $true -ErrorAction SilentlyContinue } catch { }
+
+    try {
         $mgParams = @{
-            Scopes                  = @('DeviceManagementServiceConfig.ReadWrite.All')
+            Scopes                  = @(
+                'Device.ReadWrite.All',
+                'DeviceManagementManagedDevices.ReadWrite.All',
+                'DeviceManagementServiceConfig.ReadWrite.All',
+                'DeviceManagementScripts.ReadWrite.All'
+            )
             UseDeviceAuthentication = $true
             ErrorAction             = 'Stop'
         }
         if ($TenantId) { $mgParams.TenantId = $TenantId }
-        if ($AppId)    { $mgParams.ClientId  = $AppId    }
 
         Connect-MgGraph @mgParams
-        Write-Host '' # Blank line after Connect-MgGraph output
-        $Result.AuthMethod = 'DeviceCode'
-        Write-Log 'Device code authentication succeeded'
-    }
 
-    $ctx = Get-MgContext -ErrorAction SilentlyContinue
-    if ($ctx) {
-        $Result.AuthAccount = if ($ctx.Account) { $ctx.Account } elseif ($ctx.AppName) { $ctx.AppName } else { $ctx.ClientId }
-        Write-Log "Authenticated as: $($Result.AuthAccount)"
-        Write-OK  "Authenticated: $($Result.AuthAccount)"
+        Write-Host '' # blank line after device-code output
+        $ctx = Get-MgContext -ErrorAction SilentlyContinue
+        if ($ctx) {
+            $Result.AuthMethod  = 'DeviceCode'
+            $Result.AuthAccount = if ($ctx.Account) { $ctx.Account } else { $ctx.ClientId }
+            Write-Log "Device code auth succeeded: $($Result.AuthAccount)"
+            Write-OK  "Authenticated: $($Result.AuthAccount)"
+        }
+    } catch {
+        Write-ErrorLog "Device code authentication failed: $_"
+        $Result.Error = "Authentication failed: $_"
+        Write-Err "Authentication failed: $_"
+        $Result | ConvertTo-Json -Depth 5
+        exit 1
     }
-
-} catch {
-    Write-ErrorLog "Authentication failed: $_"
-    $Result.Error = "Authentication failed: $_"
-    Write-Err "Authentication failed: $_"
-    if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
-    exit 1
+} elseif ($AppId) {
+    $Result.AuthMethod = 'ServicePrincipal'
+    Write-Log "Using service principal auth (AppId: $AppId, TenantId: $TenantId) — community script will authenticate"
+} elseif ($CertificateThumbprint -or $CertificateSubjectName) {
+    $Result.AuthMethod = 'Certificate'
+    Write-Log "Using certificate auth — community script will authenticate"
 }
 #endregion
 
-#region --- Step 4: Device Registration ---
-Write-Section 'DEVICE REGISTRATION' 4 5
-Write-Log 'Submitting device to Autopilot...'
-Write-Info "GroupTag     : $(if ($GroupTag)     { $GroupTag }     else { '(none)' })"
-Write-Info "AssignedUser : $(if ($AssignedUser) { $AssignedUser } else { '(none)' })"
-Write-Info 'Submitting hardware hash to Microsoft Intune...'
+#region --- Step 4: Run community script ---
+Write-Section 'AUTOPILOT REGISTRATION — COMMUNITY SCRIPT' 4 4
+Write-Log "Running get-windowsautopilotinfocommunity.ps1 with -Online..."
 
-$importRecord = $null
+$csvPath = "$OutputRoot\AutopilotHash_Community.csv"
+
+# Build the argument list for the community script
+$communityArgs = @('-Online', '-OutputFile', $csvPath)
+if ($GroupTag)               { $communityArgs += '-GroupTag';               $communityArgs += $GroupTag }
+if ($AssignedUser)           { $communityArgs += '-AssignedUser';           $communityArgs += $AssignedUser }
+if ($TenantId)               { $communityArgs += '-TenantId';               $communityArgs += $TenantId }
+if ($AppId)                  { $communityArgs += '-AppId';                  $communityArgs += $AppId }
+if ($AppSecret)              { $communityArgs += '-AppSecret';              $communityArgs += $AppSecret }
+if ($CertificateThumbprint)  { $communityArgs += '-CertificateThumbprint';  $communityArgs += $CertificateThumbprint }
+if ($CertificateSubjectName) { $communityArgs += '-CertificateSubjectName'; $communityArgs += $CertificateSubjectName }
+
+if (-not $NonInteractive) {
+    Write-Info "Output CSV   : $csvPath"
+    if ($GroupTag)    { Write-Info "GroupTag     : $GroupTag" }
+    if ($AssignedUser){ Write-Info "AssignedUser : $AssignedUser" }
+    Write-Host ''
+    Write-Host "  $('─' * 64)" -ForegroundColor DarkGray
+    Write-Host '  Community script output:' -ForegroundColor DarkGray
+    Write-Host "  $('─' * 64)" -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+$communityExitCode = 0
+$communityOutput   = $null
 
 try {
-    # Use community module function if available; otherwise call Graph API directly
-    $hasCommunityAdd = $null -ne (Get-Command 'Add-AutopilotImportedDevice' -ErrorAction SilentlyContinue)
+    if ($NonInteractive) {
+        # Capture all output so we can build our JSON result
+        $communityOutput   = & $communityScriptPath @communityArgs 2>&1 | Out-String
+        $communityExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        Write-Log "Community script exit code: $communityExitCode"
+        Write-Log "Community script output:`n$communityOutput"
 
-    if ($hasCommunityAdd) {
-        Write-Log 'Using WindowsAutopilotIntuneCommunity Add-AutopilotImportedDevice'
-        $importArgs = @{
-            serialNumber       = $Result.SerialNumber
-            hardwareIdentifier = $hardwareHash
+        # Trim output for JSON (avoid huge strings)
+        $Result.CommunityOutput = $communityOutput.Trim() -replace '(?m)^\s+', '  ' | Out-String
+        if ($Result.CommunityOutput.Length -gt 2000) {
+            $Result.CommunityOutput = $Result.CommunityOutput.Substring(0, 2000) + '...[truncated]'
         }
-        if ($GroupTag)    { $importArgs.groupTag    = $GroupTag }
-        if ($AssignedUser){ $importArgs.assignedUser = $AssignedUser }
-        $importRecord = Add-AutopilotImportedDevice @importArgs -ErrorAction Stop
     } else {
-        Write-Log 'Community function not found — using Invoke-MgGraphRequest'
-        Write-Wrn 'Using Invoke-MgGraphRequest (community module function unavailable)'
-        $body = @{
-            serialNumber       = $Result.SerialNumber
-            hardwareIdentifier = $hardwareHash
-        }
-        if ($GroupTag)    { $body.groupTag                  = $GroupTag }
-        if ($AssignedUser){ $body.assignedUserPrincipalName = $AssignedUser }
-        $importRecord = Invoke-MgGraphRequest -Method POST `
-            -Uri 'https://graph.microsoft.com/v1.0/deviceManagement/importedWindowsAutopilotDeviceIdentities' `
-            -Body ($body | ConvertTo-Json -Depth 5) `
-            -ContentType 'application/json' `
-            -ErrorAction Stop
+        # Let the community script write to the console directly — the user sees live output
+        & $communityScriptPath @communityArgs
+        $communityExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        Write-Log "Community script exit code: $communityExitCode"
     }
-
-    if (-not $importRecord -or -not $importRecord.id) {
-        throw 'Registration returned no import record ID'
-    }
-
-    $Result.ImportId = $importRecord.id
-    Write-OK  "Submitted — Import ID: $($Result.ImportId)"
-    Write-Log "Import record created: $($Result.ImportId)"
-
 } catch {
-    Write-ErrorLog "Device registration failed: $_"
-    $Result.Error        = "Device registration failed: $_"
-    $Result.ImportStatus = 'SubmissionFailed'
-    Write-Err "Submission failed: $_"
+    Write-ErrorLog "Community script execution failed: $_"
+    $Result.Error        = "Community script failed: $_"
+    $Result.UploadStatus = 'ExecutionFailed'
     if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
     exit 1
 }
+
+if (-not $NonInteractive) {
+    Write-Host ''
+    Write-Host "  $('─' * 64)" -ForegroundColor DarkGray
+    Write-Host ''
+}
 #endregion
 
-#region --- Step 5: Poll Import Status ---
-Write-Section 'POLLING IMPORT STATUS' 5 5
-Write-Log "Polling status for import ID: $($Result.ImportId)..."
-Write-Info "Import ID : $($Result.ImportId)"
-Write-Info 'Waiting for Intune to process the import...'
+#region --- Parse results ---
+Write-Log 'Parsing community script results...'
 
-$maxAttempts = 20   # 20 × 15 s = 5 minutes
-$intervalSec = 15
-$attempt     = 0
-$finalStatus = 'unknown'
-$statusRecord = $null
-$importState  = $null
-
-$hasCommunityPoll = $null -ne (Get-Command 'Get-AutopilotImportedDevice' -ErrorAction SilentlyContinue)
-
-while ($attempt -lt $maxAttempts) {
-    $attempt++
+# Check CSV output to confirm hash was collected
+$hashCollected = $false
+if (Test-Path $csvPath) {
     try {
-        if ($hasCommunityPoll) {
-            $statusRecord = Get-AutopilotImportedDevice -id $Result.ImportId -ErrorAction Stop
-        } else {
-            $statusRecord = Invoke-MgGraphRequest -Method GET `
-                -Uri "https://graph.microsoft.com/v1.0/deviceManagement/importedWindowsAutopilotDeviceIdentities/$($Result.ImportId)" `
-                -ErrorAction Stop
+        $csvData = Import-Csv $csvPath -ErrorAction Stop
+        $hashEntry = $csvData | Select-Object -First 1
+        $hashValue = $hashEntry.'Hardware Hash'
+        if ($hashValue -and $hashValue.Length -gt 0) {
+            $hashCollected = $true
+            Write-Log "Hardware hash confirmed in CSV ($($hashValue.Length) chars)"
         }
-
-        try {
-            $importState  = $statusRecord.state
-            $finalStatus  = if ($importState -and $importState.deviceImportStatus) { $importState.deviceImportStatus } else { 'unknown' }
-        } catch { $finalStatus = 'unknown' }
-
-        Write-Log "Poll $attempt/$maxAttempts — status: $finalStatus"
-        Write-Info "  Attempt $attempt/$maxAttempts  [ $finalStatus ]"
-
-        if ($finalStatus -in @('complete', 'error', 'partialMatch')) { break }
-
+        # Use serial from CSV if we didn't get it earlier
+        if (-not $Result.SerialNumber -and $hashEntry.'Device Serial Number') {
+            $Result.SerialNumber = $hashEntry.'Device Serial Number'
+        }
     } catch {
-        Write-Log "Poll attempt $attempt failed: $_" -Level 'WARN'
-        Write-Wrn "Poll $attempt failed: $_"
-    }
-
-    if ($attempt -lt $maxAttempts) {
-        if (-not $NonInteractive) {
-            Write-Host "  Retrying in $intervalSec s..." -ForegroundColor DarkGray
-        }
-        Start-Sleep -Seconds $intervalSec
+        Write-Log "Could not parse CSV at $csvPath : $_" -Level 'WARN'
     }
 }
 
-$Result.ImportStatus = $finalStatus
+# Determine success and upload status from exit code and output
+if ($communityExitCode -eq 0) {
+    $Result.Success = $true
 
-switch ($finalStatus) {
-    'complete' {
-        $Result.Success = $true
-        try { $Result.DeviceRegistrationId = $importState.deviceRegistrationId } catch { }
-        Write-OK  "Registration complete!  Device Reg ID: $($Result.DeviceRegistrationId)"
-        Write-Log "Registration complete. Device Reg ID: $($Result.DeviceRegistrationId)"
+    # Try to extract auth account from community script output (NonInteractive)
+    if ($NonInteractive -and $communityOutput -and -not $Result.AuthAccount) {
+        if ($communityOutput -match 'Connected to Intune tenant (\S+)') {
+            $Result.AuthAccount = $Matches[1]
+        }
     }
-    'partialMatch' {
-        # Device already exists in Autopilot — not a failure
-        $Result.Success = $true
-        try { $Result.DeviceRegistrationId = $importState.deviceRegistrationId } catch { }
-        Write-Wrn 'Partial match — device already registered in Autopilot (existing record).'
-        Write-Log 'Partial match — device may already be registered.'
+
+    if ($hashCollected) {
+        $Result.UploadStatus = 'Registered'
+        Write-OK  'Device successfully registered with Autopilot'
+        Write-Log 'Registration: success (exit code 0, hash confirmed in CSV)'
+    } else {
+        $Result.UploadStatus = 'Registered'
+        Write-OK  'Community script completed successfully (exit code 0)'
+        Write-Log 'Registration: success (exit code 0, CSV not found — may have been cleaned up)'
     }
-    'error' {
-        try {
-            $Result.ImportErrorCode = $importState.deviceErrorCode
-            $Result.ImportErrorName = $importState.deviceErrorName
-        } catch { }
-        $Result.Error   = "Import error — Code: $($Result.ImportErrorCode), Name: $($Result.ImportErrorName)"
-        $Result.Success = $false
-        Write-Err  "Import error — Code: $($Result.ImportErrorCode)  Name: $($Result.ImportErrorName)"
-        Write-Log  "Import error. Code: $($Result.ImportErrorCode), Name: $($Result.ImportErrorName)" -Level 'ERROR'
+} else {
+    $Result.Success      = $false
+    $Result.UploadStatus = 'Failed'
+
+    # Try to extract error from community script output
+    if ($communityOutput) {
+        $errorLines = ($communityOutput -split "`n" | Where-Object { $_ -match 'error|fail|exception' -and $_ -notmatch '^#' }) -join ' '
+        if ($errorLines) {
+            $Result.Error = "Community script error (exit $communityExitCode): " + $errorLines.Trim().Substring(0, [Math]::Min(200, $errorLines.Trim().Length))
+        }
     }
-    default {
-        $Result.Error   = "Import timed out after $($maxAttempts * $intervalSec)s. Last status: $finalStatus — may still complete in Intune."
-        $Result.Success = $false
-        Write-Wrn "Timed out after $($maxAttempts * $intervalSec)s. Last status: $finalStatus"
-        Write-Wrn 'The import may still complete. Check Intune > Devices > Enrollment > Windows Autopilot.'
-        Write-Log "Import timed out. Last status: $finalStatus" -Level 'WARN'
+    if (-not $Result.Error) {
+        $Result.Error = "Community script exited with code $communityExitCode"
     }
+
+    Write-Err  "Registration failed (exit code $communityExitCode)"
+    Write-Log  "Registration: failed — exit code $communityExitCode" -Level 'ERROR'
 }
 #endregion
 
@@ -444,39 +397,38 @@ try { Disconnect-MgGraph -ErrorAction SilentlyContinue } catch { }
 
 $jsonOut = $Result | ConvertTo-Json -Depth 5
 $jsonOut | Out-File "$LogDir\$ScriptName-Report.json" -Force -Encoding UTF8
-Write-Log "Result JSON saved: $LogDir\$ScriptName-Report.json"
+Write-Log "Result JSON: $LogDir\$ScriptName-Report.json"
 
 if ($NonInteractive) {
     $jsonOut
 } else {
     Write-Host ''
     Write-Host "  $('═' * 64)" -ForegroundColor Cyan
-    Write-Host '  AUTOPILOT REGISTRATION (OAUTH / COMMUNITY MODULE) — RESULT' -ForegroundColor White
+    Write-Host '  AUTOPILOT REGISTRATION (OAUTH · COMMUNITY SCRIPT) — RESULT' -ForegroundColor White
     Write-Host "  $('═' * 64)" -ForegroundColor Cyan
     $fields = [ordered]@{
-        'Serial Number'  = $Result.SerialNumber
-        'Hash Source'    = $Result.HashSource
-        'Hash Length'    = "$($Result.HardwareHashLength) chars"
-        'Auth Method'    = $Result.AuthMethod
-        'Auth Account'   = $Result.AuthAccount
-        'Community Mod'  = if ($Result.CommunityModVersion) { "v$($Result.CommunityModVersion)" } else { 'Not used (Graph direct)' }
-        'Graph Auth Mod' = "v$($Result.GraphModVersion)"
-        'Import ID'      = if ($Result.ImportId) { $Result.ImportId } else { '(none)' }
-        'Import Status'  = if ($Result.ImportStatus) { $Result.ImportStatus } else { '(none)' }
-        'Device Reg ID'  = if ($Result.DeviceRegistrationId) { $Result.DeviceRegistrationId } else { '(pending)' }
+        'Serial Number'  = if ($Result.SerialNumber)   { $Result.SerialNumber }   else { '(unknown)' }
+        'Auth Method'    = if ($Result.AuthMethod)     { $Result.AuthMethod }     else { '(community script)' }
+        'Auth Account'   = if ($Result.AuthAccount)    { $Result.AuthAccount }    else { '(see output above)' }
+        'Upload Status'  = if ($Result.UploadStatus)   { $Result.UploadStatus }   else { '(unknown)' }
+        'Graph Mod Ver'  = if ($Result.GraphModVersion){ "v$($Result.GraphModVersion)" } else { '(unknown)' }
+        'Community Script' = $communityScriptPath
     }
     if ($GroupTag)    { $fields['Group Tag']     = $GroupTag }
     if ($AssignedUser){ $fields['Assigned User'] = $AssignedUser }
     foreach ($k in $fields.Keys) {
-        Write-Host ("  {0,-18}: {1}" -f $k, $fields[$k]) -ForegroundColor Gray
+        Write-Host ("  {0,-20}: {1}" -f $k, $fields[$k]) -ForegroundColor Gray
     }
     Write-Host ''
-    $successColor = if ($Result.Success) { 'Green' } else { 'Red' }
-    Write-Host "  Success : $($Result.Success)" -ForegroundColor $successColor
+    $col = if ($Result.Success) { 'Green' } else { 'Red' }
+    Write-Host "  Success : $($Result.Success)" -ForegroundColor $col
     if ($Result.Error) { Write-Host "  Error   : $($Result.Error)" -ForegroundColor Yellow }
     Write-Host "  $('═' * 64)" -ForegroundColor Cyan
     Write-Host ''
-    Write-Host "  Report saved: $LogDir\$ScriptName-Report.json" -ForegroundColor DarkCyan
+    Write-Host "  Report : $LogDir\$ScriptName-Report.json" -ForegroundColor DarkCyan
+    if (Test-Path $csvPath) {
+        Write-Host "  CSV    : $csvPath" -ForegroundColor DarkCyan
+    }
     Write-Host ''
 }
 #endregion

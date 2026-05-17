@@ -92,14 +92,15 @@ function Get-StepSummary { # Generates human-readable summary from step output
                 return 'No Autopilot profile found locally'
             }
             '*Register-AutopilotDeviceCommunity*' {
-                if ($Parsed.ImportStatus -eq 'NeedsInteractiveAuth') { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth' }
+                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth') { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth device code' }
                 if ($Parsed.Success -eq $true) {
-                    $s = "Registered — Status: $($Parsed.ImportStatus)"
+                    $s = 'Registered via community script'
                     if ($Parsed.AuthAccount) { $s += " · Auth: $($Parsed.AuthAccount)" }
+                    if ($Parsed.AuthMethod)  { $s += " ($($Parsed.AuthMethod))" }
                     return $s
                 }
                 $errSnip = if ($Parsed.Error) { '— ' + $Parsed.Error.Substring(0, [Math]::Min(60, $Parsed.Error.Length)) } else { '' }
-                return "Status: $($Parsed.ImportStatus) $errSnip".Trim()
+                return "Upload: $($Parsed.UploadStatus) $errSnip".Trim()
             }
             '*Get-DriveMappings*' {
                 if (-not $Parsed.Results) { return 'No drive mappings found' }
@@ -275,23 +276,10 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 return @{ Verdict = 'FAIL'; Reason = 'Registration did not complete successfully' }
             }
             '*Register-AutopilotDeviceCommunity*' {
-                if ($Parsed.Success -eq $true) {
-                    $reason = "Registered (status: $($Parsed.ImportStatus))"
-                    if ($Parsed.ImportStatus -eq 'partialMatch') { $reason = 'Partial match — device already in Autopilot' }
-                    return @{ Verdict = 'PASS'; Reason = $reason }
-                }
-                if ($Parsed.ImportStatus -eq 'NeedsInteractiveAuth') {
-                    return @{ Verdict = 'WARN'; Reason = 'Requires interactive login — run via [3] Run Single Step to use OAuth device code' }
-                }
-                if ($Parsed.ImportStatus -eq 'SubmissionFailed') {
-                    return @{ Verdict = 'FAIL'; Reason = "Submission failed: $($Parsed.Error)" }
-                }
-                if ($Parsed.ImportStatus -eq 'error') {
-                    return @{ Verdict = 'FAIL'; Reason = "Import error — Code: $($Parsed.ImportErrorCode), $($Parsed.ImportErrorName)" }
-                }
-                if ($Parsed.ImportStatus -eq 'unknown' -or $Parsed.ImportStatus -eq 'pending') {
-                    return @{ Verdict = 'WARN'; Reason = 'Import timed out — check Intune Autopilot devices for completion' }
-                }
+                if ($Parsed.Success -eq $true)                             { return @{ Verdict = 'PASS'; Reason = "Device registered via community script (OAuth)" } }
+                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')      { return @{ Verdict = 'WARN'; Reason = 'Requires interactive login — run via [3] Run Single Step to use OAuth device code' } }
+                if ($Parsed.UploadStatus -eq 'ExecutionFailed')           { return @{ Verdict = 'FAIL'; Reason = "Community script execution failed: $($Parsed.Error)" } }
+                if ($Parsed.UploadStatus -eq 'Failed')                    { return @{ Verdict = 'FAIL'; Reason = if ($Parsed.Error) { $Parsed.Error } else { 'Community script reported failure' } } }
                 return @{ Verdict = 'FAIL'; Reason = 'OAuth registration did not complete successfully' }
             }
             default                         { return @{ Verdict = 'PASS'; Reason = 'Completed' } }
@@ -367,14 +355,13 @@ function Get-HtmlTable { # Extracts data table from step output
                 })
             }
             '*Register-AutopilotDeviceCommunity*' {
-                $cols = @('Serial','AuthAccount','AuthMethod','ImportStatus','DeviceRegID','CommunityMod')
+                $cols = @('Serial','AuthAccount','AuthMethod','UploadStatus','GraphModVer')
                 $rows = @([PSCustomObject]@{
-                    Serial       = if ($Parsed.SerialNumber)         { $Parsed.SerialNumber }         else { '(unknown)' }
-                    AuthAccount  = if ($Parsed.AuthAccount)          { $Parsed.AuthAccount }          else { '(none)' }
-                    AuthMethod   = if ($Parsed.AuthMethod)           { $Parsed.AuthMethod }           else { '(none)' }
-                    ImportStatus = if ($Parsed.ImportStatus)         { $Parsed.ImportStatus }         else { '(none)' }
-                    DeviceRegID  = if ($Parsed.DeviceRegistrationId) { $Parsed.DeviceRegistrationId } else { '(pending)' }
-                    CommunityMod = if ($Parsed.CommunityModVersion)  { "v$($Parsed.CommunityModVersion)" } else { 'Graph direct' }
+                    Serial       = if ($Parsed.SerialNumber)        { $Parsed.SerialNumber }        else { '(unknown)' }
+                    AuthAccount  = if ($Parsed.AuthAccount)         { $Parsed.AuthAccount }         else { '(community script)' }
+                    AuthMethod   = if ($Parsed.AuthMethod)          { $Parsed.AuthMethod }          else { '(community script)' }
+                    UploadStatus = if ($Parsed.UploadStatus)        { $Parsed.UploadStatus }        else { '(unknown)' }
+                    GraphModVer  = if ($Parsed.GraphModVersion)     { "v$($Parsed.GraphModVersion)" } else { '(unknown)' }
                 })
             }
         }
