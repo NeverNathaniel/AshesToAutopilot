@@ -3,12 +3,12 @@
     Unified interactive orchestrator for the Pre-Wipe Toolkit.
 
 .DESCRIPTION
-    Menu-driven workflow that guides a tech through all 31 pre-wipe preparation
+    Menu-driven workflow that guides a tech through all 32 pre-wipe preparation
     steps. Numbered single-key menus; no external module dependencies.
 
     Modes:
     - Quick Check  : 12 core steps (fast scan + backup essentials)
-    - Full Prep    : all 31 steps in sequence
+    - Full Prep    : all 32 steps in sequence
     - Single Step  : pick any step by number
     - Custom Run   : enter a comma-separated list of step numbers
 
@@ -133,7 +133,8 @@ $script:Steps = @(
     [PSCustomObject]@{ Index = 28; Phase = 'Autopilot';       DisplayName = 'Test Autopilot Readiness';              ScriptPath = 'Scripts\AutopilotReadiness\Test-AutopilotReadiness.ps1';      Status = 'not-run' }
     [PSCustomObject]@{ Index = 29; Phase = 'Autopilot';       DisplayName = 'Get Autopilot Assignment';              ScriptPath = 'Scripts\AutopilotReadiness\Get-AutopilotAssignment.ps1';      Status = 'not-run' }
     [PSCustomObject]@{ Index = 30; Phase = 'Autopilot';       DisplayName = 'Register Device with Autopilot';        ScriptPath = 'Scripts\AutopilotReadiness\Register-AutopilotDevice.ps1';    Status = 'not-run' }
-    [PSCustomObject]@{ Index = 31; Phase = 'Autopilot';       DisplayName = 'Pre-Wipe Summary';                      ScriptPath = 'Scripts\AutopilotReadiness\Get-PreWipeSummary.ps1';          Status = 'not-run' }
+    [PSCustomObject]@{ Index = 31; Phase = 'Autopilot';       DisplayName = 'Pre-Wipe Summary';                      ScriptPath = 'Scripts\AutopilotReadiness\Get-PreWipeSummary.ps1';                        Status = 'not-run' }
+    [PSCustomObject]@{ Index = 32; Phase = 'Autopilot';       DisplayName = 'Register Device (OAuth · Community Mod)'; ScriptPath = 'Scripts\AutopilotReadiness\Register-AutopilotDeviceCommunity.ps1'; Status = 'not-run' }
 )
 
 #endregion
@@ -275,7 +276,7 @@ function Invoke-FullPrep {
     Write-Host ''
     if ($key -ne 'Y') { return }
 
-    $null = Invoke-RunSteps -StepsToRun $script:Steps -RunLabel 'Full Prep' -RunSub 'All 31 steps in sequence'
+    $null = Invoke-RunSteps -StepsToRun $script:Steps -RunLabel 'Full Prep' -RunSub "All $($script:Steps.Count) steps in sequence"
 }
 
 function Invoke-SingleStep { # Menu to run one step interactively

@@ -12,6 +12,7 @@ function Get-ActionInstruction {
         '*Test-AutopilotReadiness*' { return 'Device does not meet Autopilot hardware requirements. Check TPM version, UEFI mode, and Secure Boot status before proceeding.' }
         '*Get-AutopilotAssignment*' { return 'Assign the device an Autopilot profile in Intune (Devices &rsaquo; Enrollment &rsaquo; Autopilot) before wiping.' }
         '*Register-AutopilotDevice*'{ return 'Hardware hash upload failed. Re-run step 30. If the issue persists, upload the hash CSV manually via Intune.' }
+        '*Register-AutopilotDeviceCommunity*' { return 'OAuth registration failed. Re-run step 32 interactively via [3] Run Single Step and sign in when prompted. For NeedsInteractiveAuth, choose Run Single Step from the main menu.' }
         '*Get-DownloadsSize*'       { return 'Auto-copy to Documents failed. Manually copy the Downloads folder contents to a safe location before wiping.' }
         default                     { return [System.Web.HttpUtility]::HtmlEncode($VerdictReason) }
     }
@@ -89,6 +90,16 @@ function Get-StepSummary { # Generates human-readable summary from step output
                     return $s
                 }
                 return 'No Autopilot profile found locally'
+            }
+            '*Register-AutopilotDeviceCommunity*' {
+                if ($Parsed.ImportStatus -eq 'NeedsInteractiveAuth') { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth' }
+                if ($Parsed.Success -eq $true) {
+                    $s = "Registered — Status: $($Parsed.ImportStatus)"
+                    if ($Parsed.AuthAccount) { $s += " · Auth: $($Parsed.AuthAccount)" }
+                    return $s
+                }
+                $errSnip = if ($Parsed.Error) { '— ' + $Parsed.Error.Substring(0, [Math]::Min(60, $Parsed.Error.Length)) } else { '' }
+                return "Status: $($Parsed.ImportStatus) $errSnip".Trim()
             }
             '*Get-DriveMappings*' {
                 if (-not $Parsed.Results) { return 'No drive mappings found' }
@@ -263,6 +274,26 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 if ($Parsed.UploadStatus -eq 'HashCollected') { return @{ Verdict = 'WARN'; Reason = 'Hash collected but not uploaded' } }
                 return @{ Verdict = 'FAIL'; Reason = 'Registration did not complete successfully' }
             }
+            '*Register-AutopilotDeviceCommunity*' {
+                if ($Parsed.Success -eq $true) {
+                    $reason = "Registered (status: $($Parsed.ImportStatus))"
+                    if ($Parsed.ImportStatus -eq 'partialMatch') { $reason = 'Partial match — device already in Autopilot' }
+                    return @{ Verdict = 'PASS'; Reason = $reason }
+                }
+                if ($Parsed.ImportStatus -eq 'NeedsInteractiveAuth') {
+                    return @{ Verdict = 'WARN'; Reason = 'Requires interactive login — run via [3] Run Single Step to use OAuth device code' }
+                }
+                if ($Parsed.ImportStatus -eq 'SubmissionFailed') {
+                    return @{ Verdict = 'FAIL'; Reason = "Submission failed: $($Parsed.Error)" }
+                }
+                if ($Parsed.ImportStatus -eq 'error') {
+                    return @{ Verdict = 'FAIL'; Reason = "Import error — Code: $($Parsed.ImportErrorCode), $($Parsed.ImportErrorName)" }
+                }
+                if ($Parsed.ImportStatus -eq 'unknown' -or $Parsed.ImportStatus -eq 'pending') {
+                    return @{ Verdict = 'WARN'; Reason = 'Import timed out — check Intune Autopilot devices for completion' }
+                }
+                return @{ Verdict = 'FAIL'; Reason = 'OAuth registration did not complete successfully' }
+            }
             default                         { return @{ Verdict = 'PASS'; Reason = 'Completed' } }
         }
     } catch { return @{ Verdict = 'WARN'; Reason = "Evaluation error: $_" } }
@@ -333,6 +364,17 @@ function Get-HtmlTable { # Extracts data table from step output
                     AzureAD    = if ($Parsed.AzureADJoined) { 'Joined' } else { 'No' }
                     Profile    = if ($Parsed.ProfileName) { $Parsed.ProfileName } else { '(none)' }
                     User       = if ($Parsed.AssignedUser) { $Parsed.AssignedUser } else { '(none)' }
+                })
+            }
+            '*Register-AutopilotDeviceCommunity*' {
+                $cols = @('Serial','AuthAccount','AuthMethod','ImportStatus','DeviceRegID','CommunityMod')
+                $rows = @([PSCustomObject]@{
+                    Serial       = if ($Parsed.SerialNumber)         { $Parsed.SerialNumber }         else { '(unknown)' }
+                    AuthAccount  = if ($Parsed.AuthAccount)          { $Parsed.AuthAccount }          else { '(none)' }
+                    AuthMethod   = if ($Parsed.AuthMethod)           { $Parsed.AuthMethod }           else { '(none)' }
+                    ImportStatus = if ($Parsed.ImportStatus)         { $Parsed.ImportStatus }         else { '(none)' }
+                    DeviceRegID  = if ($Parsed.DeviceRegistrationId) { $Parsed.DeviceRegistrationId } else { '(pending)' }
+                    CommunityMod = if ($Parsed.CommunityModVersion)  { "v$($Parsed.CommunityModVersion)" } else { 'Graph direct' }
                 })
             }
         }
