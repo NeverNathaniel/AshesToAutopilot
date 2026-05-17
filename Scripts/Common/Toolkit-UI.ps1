@@ -135,7 +135,7 @@ function Show-MainMenu { # Displays main menu with progress
     Write-Host "  ╠$bar╣" -ForegroundColor Cyan
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
     Write-MenuLine '  [1]  Quick Check       12 core steps' White
-    Write-MenuLine '  [2]  Full Prep         all 31 steps'  White
+    Write-MenuLine "  [2]  Full Prep         all $($script:Steps.Count) steps"  White
     Write-MenuLine '  [3]  Run Single Step'                 White
     Write-MenuLine '  [4]  Custom Run        choose steps'  White
     Write-Host ("  ║ {0} ║" -f ''.PadRight($inner)) -ForegroundColor Cyan
