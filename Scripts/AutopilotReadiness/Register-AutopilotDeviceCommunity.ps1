@@ -191,7 +191,7 @@ try {
 
 # In NonInteractive mode without credentials, we cannot authenticate interactively.
 if ($NonInteractive -and (-not $AppId) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)) {
-    $msg = 'OAuth device code login requires interactive mode. Run this step via [3] Run Single Step to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret (or a certificate).'
+    $msg = 'Interactive OAuth requires interactive mode. Run this step via [3] Run Single Step to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret (or a certificate).'
     Write-ErrorLog $msg
     $Result.Error        = $msg
     $Result.UploadStatus = 'NeedsInteractiveAuth'
@@ -204,53 +204,49 @@ if ($NonInteractive -and (-not $AppId) -and (-not $CertificateThumbprint) -and (
 $usePreAuth = (-not $NonInteractive) -and (-not $AppId) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)
 
 if ($usePreAuth) {
-    Write-Section 'OAUTH AUTHENTICATION — DEVICE CODE LOGIN' 3 4
-    Write-Log 'Starting interactive device code authentication...'
+    Write-Section 'OAUTH AUTHENTICATION — BROWSER SIGN-IN' 3 4
+    Write-Log 'Starting interactive browser OAuth authentication...'
 
     Write-Host ''
     Write-Host '  ╔══════════════════════════════════════════════════════════════╗' -ForegroundColor Cyan
     Write-Host '  ║   SIGN IN REQUIRED — MICROSOFT GRAPH                         ║' -ForegroundColor Cyan
     Write-Host '  ║                                                               ║' -ForegroundColor Cyan
-    Write-Host '  ║   A code will appear on the next line.                        ║' -ForegroundColor Cyan
-    Write-Host '  ║   Open a browser on any device and visit:                    ║' -ForegroundColor Cyan
-    Write-Host '  ║     https://microsoft.com/devicelogin                        ║' -ForegroundColor Cyan
+    Write-Host '  ║   A browser window will open for sign-in.                    ║' -ForegroundColor Cyan
     Write-Host '  ║   Sign in with an account that has Intune admin access.      ║' -ForegroundColor Cyan
     Write-Host '  ║                                                               ║' -ForegroundColor Cyan
-    Write-Host '  ║   Required scopes:                                            ║' -ForegroundColor Cyan
-    Write-Host '  ║     Device.ReadWrite.All                                      ║' -ForegroundColor Cyan
-    Write-Host '  ║     DeviceManagementManagedDevices.ReadWrite.All              ║' -ForegroundColor Cyan
+    Write-Host '  ║   Required permission:                                        ║' -ForegroundColor Cyan
     Write-Host '  ║     DeviceManagementServiceConfig.ReadWrite.All               ║' -ForegroundColor Cyan
     Write-Host '  ╚══════════════════════════════════════════════════════════════╝' -ForegroundColor Cyan
     Write-Host ''
+    Write-Info 'Opening browser for sign-in...'
 
-    # Disable WAM to match the community script's own behaviour (device code works in console)
+    # Disable WAM so MSAL opens a real browser window instead of the Windows
+    # credential picker — matches the community script's own interactive behaviour.
     try { Set-MgGraphOption -DisableLoginByWAM $true -ErrorAction SilentlyContinue } catch { }
 
     try {
         $mgParams = @{
-            Scopes                  = @(
+            Scopes      = @(
                 'Device.ReadWrite.All',
                 'DeviceManagementManagedDevices.ReadWrite.All',
                 'DeviceManagementServiceConfig.ReadWrite.All',
                 'DeviceManagementScripts.ReadWrite.All'
             )
-            UseDeviceAuthentication = $true
-            ErrorAction             = 'Stop'
+            ErrorAction = 'Stop'
         }
         if ($TenantId) { $mgParams.TenantId = $TenantId }
 
         Connect-MgGraph @mgParams
 
-        Write-Host '' # blank line after device-code output
         $ctx = Get-MgContext -ErrorAction SilentlyContinue
         if ($ctx) {
-            $Result.AuthMethod  = 'DeviceCode'
+            $Result.AuthMethod  = 'Interactive'
             $Result.AuthAccount = if ($ctx.Account) { $ctx.Account } else { $ctx.ClientId }
-            Write-Log "Device code auth succeeded: $($Result.AuthAccount)"
+            Write-Log "Interactive browser auth succeeded: $($Result.AuthAccount)"
             Write-OK  "Authenticated: $($Result.AuthAccount)"
         }
     } catch {
-        Write-ErrorLog "Device code authentication failed: $_"
+        Write-ErrorLog "Interactive authentication failed: $_"
         $Result.Error = "Authentication failed: $_"
         Write-Err "Authentication failed: $_"
         $Result | ConvertTo-Json -Depth 5
