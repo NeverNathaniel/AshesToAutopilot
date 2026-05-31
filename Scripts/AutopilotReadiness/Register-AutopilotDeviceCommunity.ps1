@@ -158,6 +158,7 @@ try {
         Write-Info 'Installing Microsoft.Graph.Authentication...'
         Install-Module 'Microsoft.Graph.Authentication' -Force -Scope AllUsers -AllowClobber -MaximumVersion '2.9.1' -ErrorAction Stop
         $mgAuth = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+        if (-not $mgAuth) { throw 'Install reported success but module not found in PSModulePath — re-run step 25.' }
     }
     $Result.GraphModVersion = $mgAuth.Version.ToString()
     Import-Module 'Microsoft.Graph.Authentication' -Force -ErrorAction Stop
@@ -191,12 +192,14 @@ try {
 
 # In NonInteractive mode without credentials, we cannot authenticate interactively.
 if ($NonInteractive -and (-not $AppId) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)) {
-    $msg = 'OAuth device code login requires interactive mode. Run this step via [3] Run Single Step to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret (or a certificate).'
+    $msg = 'Interactive OAuth requires interactive mode. Run this step via [3] Run Single Step to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret (or a certificate).'
     Write-ErrorLog $msg
     $Result.Error        = $msg
     $Result.UploadStatus = 'NeedsInteractiveAuth'
-    $Result | ConvertTo-Json -Depth 5
-    exit 1
+    $jsonEarly = $Result | ConvertTo-Json -Depth 5
+    $jsonEarly | Out-File "$LogDir\$ScriptName-Report.json" -Force -Encoding UTF8 -ErrorAction SilentlyContinue
+    $jsonEarly
+    exit 0
 }
 
 # Only pre-authenticate in interactive mode (no credentials supplied).
@@ -204,53 +207,49 @@ if ($NonInteractive -and (-not $AppId) -and (-not $CertificateThumbprint) -and (
 $usePreAuth = (-not $NonInteractive) -and (-not $AppId) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)
 
 if ($usePreAuth) {
-    Write-Section 'OAUTH AUTHENTICATION — DEVICE CODE LOGIN' 3 4
-    Write-Log 'Starting interactive device code authentication...'
+    Write-Section 'OAUTH AUTHENTICATION — BROWSER SIGN-IN' 3 4
+    Write-Log 'Starting interactive browser OAuth authentication...'
 
     Write-Host ''
     Write-Host '  ╔══════════════════════════════════════════════════════════════╗' -ForegroundColor Cyan
     Write-Host '  ║   SIGN IN REQUIRED — MICROSOFT GRAPH                         ║' -ForegroundColor Cyan
     Write-Host '  ║                                                               ║' -ForegroundColor Cyan
-    Write-Host '  ║   A code will appear on the next line.                        ║' -ForegroundColor Cyan
-    Write-Host '  ║   Open a browser on any device and visit:                    ║' -ForegroundColor Cyan
-    Write-Host '  ║     https://microsoft.com/devicelogin                        ║' -ForegroundColor Cyan
+    Write-Host '  ║   A browser window will open for sign-in.                    ║' -ForegroundColor Cyan
     Write-Host '  ║   Sign in with an account that has Intune admin access.      ║' -ForegroundColor Cyan
     Write-Host '  ║                                                               ║' -ForegroundColor Cyan
-    Write-Host '  ║   Required scopes:                                            ║' -ForegroundColor Cyan
-    Write-Host '  ║     Device.ReadWrite.All                                      ║' -ForegroundColor Cyan
-    Write-Host '  ║     DeviceManagementManagedDevices.ReadWrite.All              ║' -ForegroundColor Cyan
+    Write-Host '  ║   Required permission:                                        ║' -ForegroundColor Cyan
     Write-Host '  ║     DeviceManagementServiceConfig.ReadWrite.All               ║' -ForegroundColor Cyan
     Write-Host '  ╚══════════════════════════════════════════════════════════════╝' -ForegroundColor Cyan
     Write-Host ''
+    Write-Info 'Opening browser for sign-in...'
 
-    # Disable WAM to match the community script's own behaviour (device code works in console)
+    # Disable WAM so MSAL opens a real browser window instead of the Windows
+    # credential picker — matches the community script's own interactive behaviour.
     try { Set-MgGraphOption -DisableLoginByWAM $true -ErrorAction SilentlyContinue } catch { }
 
     try {
         $mgParams = @{
-            Scopes                  = @(
+            Scopes      = @(
                 'Device.ReadWrite.All',
                 'DeviceManagementManagedDevices.ReadWrite.All',
                 'DeviceManagementServiceConfig.ReadWrite.All',
                 'DeviceManagementScripts.ReadWrite.All'
             )
-            UseDeviceAuthentication = $true
-            ErrorAction             = 'Stop'
+            ErrorAction = 'Stop'
         }
         if ($TenantId) { $mgParams.TenantId = $TenantId }
 
         Connect-MgGraph @mgParams
 
-        Write-Host '' # blank line after device-code output
         $ctx = Get-MgContext -ErrorAction SilentlyContinue
         if ($ctx) {
-            $Result.AuthMethod  = 'DeviceCode'
+            $Result.AuthMethod  = 'Interactive'
             $Result.AuthAccount = if ($ctx.Account) { $ctx.Account } else { $ctx.ClientId }
-            Write-Log "Device code auth succeeded: $($Result.AuthAccount)"
+            Write-Log "Interactive browser auth succeeded: $($Result.AuthAccount)"
             Write-OK  "Authenticated: $($Result.AuthAccount)"
         }
     } catch {
-        Write-ErrorLog "Device code authentication failed: $_"
+        Write-ErrorLog "Interactive authentication failed: $_"
         $Result.Error = "Authentication failed: $_"
         Write-Err "Authentication failed: $_"
         $Result | ConvertTo-Json -Depth 5
@@ -296,6 +295,7 @@ $communityExitCode = 0
 $communityOutput   = $null
 
 try {
+    $LASTEXITCODE = 0
     if ($NonInteractive) {
         # Capture all output so we can build our JSON result
         $communityOutput   = & $communityScriptPath @communityArgs 2>&1 | Out-String
@@ -304,7 +304,7 @@ try {
         Write-Log "Community script output:`n$communityOutput"
 
         # Trim output for JSON (avoid huge strings)
-        $Result.CommunityOutput = $communityOutput.Trim() -replace '(?m)^\s+', '  ' | Out-String
+        $Result.CommunityOutput = $communityOutput.Trim() -replace '(?m)^\s+', '  '
         if ($Result.CommunityOutput.Length -gt 2000) {
             $Result.CommunityOutput = $Result.CommunityOutput.Substring(0, 2000) + '...[truncated]'
         }
@@ -368,9 +368,9 @@ if ($communityExitCode -eq 0) {
         Write-OK  'Device successfully registered with Autopilot'
         Write-Log 'Registration: success (exit code 0, hash confirmed in CSV)'
     } else {
-        $Result.UploadStatus = 'Registered'
-        Write-OK  'Community script completed successfully (exit code 0)'
-        Write-Log 'Registration: success (exit code 0, CSV not found — may have been cleaned up)'
+        $Result.UploadStatus = 'RegisteredUnverified'
+        Write-OK  'Community script completed (exit code 0) — CSV absent, registration unconfirmed'
+        Write-Log 'Registration: unverified (exit code 0, CSV not found — check Intune to confirm)'
     }
 } else {
     $Result.Success      = $false

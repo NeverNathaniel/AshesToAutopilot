@@ -4,17 +4,27 @@
 function Get-ActionInstruction {
     param([string]$ScriptFile, [string]$VerdictReason)
     switch -Wildcard ($ScriptFile) {
-        '*Test-OneDriveSyncStatus*' { return 'Open OneDrive and wait for full sync to complete. Do not wipe until all files are uploaded.' }
-        '*Test-OneDriveKFM*'        { return 'Enable Known Folder Move for the affected profile: OneDrive tray icon &rsaquo; Settings &rsaquo; Backup &rsaquo; Manage backup.' }
-        '*Find-UnbackedData*'       { return 'Review flagged files with the user and manually back up anything not in OneDrive before wiping.' }
-        '*Backup-BrowserBookmarks*' { return 'Remind the user to sign into their browser on the new device to restore synced bookmarks.' }
-        '*Test-BitLockerEscrow*'    { return 'Re-run step 23 to escrow the BitLocker key to Entra ID. Do not wipe until the key is backed up.' }
-        '*Test-AutopilotReadiness*' { return 'Device does not meet Autopilot hardware requirements. Check TPM version, UEFI mode, and Secure Boot status before proceeding.' }
-        '*Get-AutopilotAssignment*' { return 'Assign the device an Autopilot profile in Intune (Devices &rsaquo; Enrollment &rsaquo; Autopilot) before wiping.' }
-        '*Register-AutopilotDevice*'{ return 'Hardware hash upload failed. Re-run step 30. If the issue persists, upload the hash CSV manually via Intune.' }
-        '*Register-AutopilotDeviceCommunity*' { return 'OAuth registration failed. Re-run step 32 interactively via [3] Run Single Step and sign in when prompted. For NeedsInteractiveAuth, choose Run Single Step from the main menu.' }
-        '*Get-DownloadsSize*'       { return 'Auto-copy to Documents failed. Manually copy the Downloads folder contents to a safe location before wiping.' }
-        default                     { return [System.Web.HttpUtility]::HtmlEncode($VerdictReason) }
+        '*Test-OneDriveSyncStatus*'          { return 'Open OneDrive and wait for full sync to complete. Do not wipe until all files are uploaded.' }
+        '*Test-OneDriveKFM*'                 { return 'Enable Known Folder Move for the affected profile: OneDrive tray icon &rsaquo; Settings &rsaquo; Backup &rsaquo; Manage backup.' }
+        '*Find-UnbackedData*'                { return 'Review flagged files with the user and manually back up anything not in OneDrive before wiping.' }
+        '*Backup-BrowserBookmarks*'          { return 'Remind the user to sign into their browser on the new device to restore synced bookmarks.' }
+        '*Backup-WiFiProfiles*'              { return 'Move or delete C:\PreWipeOutput\WiFiProfiles\ after restoring profiles to the new device &mdash; exported XML files contain cleartext PSK passwords.' }
+        '*Test-BitLockerEscrow*'             { return 'Re-run step 23 to escrow the BitLocker key to Entra ID. Do not wipe until the key is backed up.' }
+        '*Test-AutopilotReadiness*'          { return 'Device does not meet Autopilot hardware requirements. Check TPM version, UEFI mode, and Secure Boot status before proceeding.' }
+        '*Get-AutopilotAssignment*'          { return 'Assign the device an Autopilot profile in Intune (Devices &rsaquo; Enrollment &rsaquo; Autopilot) before wiping.' }
+        '*Register-AutopilotDeviceCommunity*'{ return 'OAuth registration failed. Re-run step 32 interactively via [3] Run Single Step and sign in when prompted. For NeedsInteractiveAuth, choose Run Single Step from the main menu.' }
+        '*Register-AutopilotDevice*'         { return 'Hardware hash upload failed. Re-run step 30. If the issue persists, upload the hash CSV manually via Intune.' }
+        '*Get-DownloadsSize*'                { return 'Auto-copy to Documents failed. Manually copy the Downloads folder contents to a safe location before wiping.' }
+        '*Test-BiosVersion*'                 { return 'Run Update-BIOS (step 27) to apply the available BIOS update before wiping.' }
+        '*Test-DriverStatus*'                { return 'Run Update-Drivers (step 26) to apply available driver updates before wiping.' }
+        '*Test-WakeOnLan*'                   { return 'Run Set-Wake-on-LAN (step 24) to enable WOL on this device before wiping.' }
+        '*Set-WakeOnLan*'                    { return 'WOL configuration partially failed. Check NIC power management settings in Device Manager and re-run step 24.' }
+        '*Install-DellCommandTools*'         { return 'Re-run step 25. Dell Command Update and Configure are required for BIOS and driver updates on Dell hardware.' }
+        '*Update-Bios*'                      { return 'Reboot the device to complete the BIOS update, then verify the BIOS version before wiping.' }
+        '*Update-Drivers*'                   { return 'Reboot the device to complete driver installation, then proceed with the wipe from a clean boot.' }
+        '*Get-TeamsData*'                    { return 'Back up Teams meeting recordings before wiping. Files are typically in C:\Users\&lt;user&gt;\Videos or OneDrive\Recordings.' }
+        '*Get-LocalAccounts*'                { return 'Verify local admin accounts with the end user. Remove any unexpected admin accounts before wiping.' }
+        default                              { return [System.Web.HttpUtility]::HtmlEncode($VerdictReason) }
     }
 }
 
@@ -91,17 +101,6 @@ function Get-StepSummary { # Generates human-readable summary from step output
                 }
                 return 'No Autopilot profile found locally'
             }
-            '*Register-AutopilotDeviceCommunity*' {
-                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth') { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth device code' }
-                if ($Parsed.Success -eq $true) {
-                    $s = 'Registered via community script'
-                    if ($Parsed.AuthAccount) { $s += " · Auth: $($Parsed.AuthAccount)" }
-                    if ($Parsed.AuthMethod)  { $s += " ($($Parsed.AuthMethod))" }
-                    return $s
-                }
-                $errSnip = if ($Parsed.Error) { '— ' + $Parsed.Error.Substring(0, [Math]::Min(60, $Parsed.Error.Length)) } else { '' }
-                return "Upload: $($Parsed.UploadStatus) $errSnip".Trim()
-            }
             '*Get-DriveMappings*' {
                 if (-not $Parsed.Results) { return 'No drive mappings found' }
                 $persistent = @($Parsed.Results | Where-Object { $_.Persistent }).Count
@@ -116,6 +115,108 @@ function Get-StepSummary { # Generates human-readable summary from step output
             }
             '*Test-AutopilotReadiness*' {
                 if ($Parsed.OverallStatus) { return $Parsed.OverallStatus }
+                return 'Completed'
+            }
+            '*Get-WindowsProductKey*' {
+                if ($Parsed.HasOEMKey -eq $true) {
+                    $ch = if ($Parsed.Activation -and $Parsed.Activation.ProductKeyChannel) { $Parsed.Activation.ProductKeyChannel } else { '' }
+                    $pk = if ($Parsed.Activation -and $Parsed.Activation.PartialProductKey) { "XXXXX-$($Parsed.Activation.PartialProductKey)" } else { '' }
+                    return "OEM key detected · $ch · $pk".TrimEnd(' ·').TrimEnd()
+                }
+                $status = if ($Parsed.Activation -and $Parsed.Activation.LicenseStatus) { $Parsed.Activation.LicenseStatus } else { 'Unknown' }
+                return "No embedded OEM key · License: $status"
+            }
+            '*Get-DeviceHealth*' {
+                $diskCount = if ($Parsed.Disks) { $Parsed.Disks.Count } else { 0 }
+                $s = "$($Parsed.OverallStatus) · $diskCount disk(s)"
+                if ($Parsed.IsLaptop -and $Parsed.Battery -and $Parsed.Battery.EstimatedChargePercent) { $s += " · Battery $($Parsed.Battery.EstimatedChargePercent)%" }
+                if ($Parsed.Warnings -and $Parsed.Warnings.Count -gt 0) { $s += " · $($Parsed.Warnings.Count) warning(s)" }
+                return $s
+            }
+            '*Get-TeamsData*' {
+                $classic = @($Parsed.Results | Where-Object { $_.ClassicTeamsPresent }).Count
+                $new     = @($Parsed.Results | Where-Object { $_.NewTeamsPresent }).Count
+                $media   = if ($Parsed.AnyMediaFiles) { ' · meeting recordings found' } else { '' }
+                return "$($Parsed.ProfilesChecked) profile(s) · Classic: $classic · New Teams: $new$media"
+            }
+            '*Get-CredentialManagerEntries*' { return "$($Parsed.EntryCount) credential(s) in Windows Credential Manager" }
+            '*Get-LocalAccounts*' { return "$($Parsed.AccountCount) account(s) · $($Parsed.AdminCount) admin(s)" }
+            '*Test-BiosVersion*' {
+                if (-not $Parsed.IsDell) { return "Non-Dell ($($Parsed.Manufacturer)) — BIOS check skipped" }
+                if ($Parsed.Error) { return "BIOS check error: $($Parsed.Error)" }
+                $upd = if ($Parsed.UpdateAvailable -eq $true) { " · Update available: v$($Parsed.LatestAvailable)" } else { ' · Up to date' }
+                return "BIOS v$($Parsed.CurrentVersion)$upd"
+            }
+            '*Test-DriverStatus*' {
+                if (-not $Parsed.IsDell) { return "Non-Dell ($($Parsed.Manufacturer)) — Dell DCU driver check skipped" }
+                $prob = if ($Parsed.ProblematicDrivers -gt 0) { " · $($Parsed.ProblematicDrivers) problematic" } else { '' }
+                $dcu  = if ($Parsed.DCUScan -and $Parsed.DCUScan.UpdateAvailable) { ' · DCU updates available' } else { '' }
+                return "$($Parsed.TotalDrivers) driver(s)$prob$dcu"
+            }
+            '*Test-WakeOnLan*' {
+                $nicCount   = if ($Parsed.NICs) { $Parsed.NICs.Count } else { 0 }
+                $wolEnabled = @($Parsed.NICs | Where-Object { $_.WOLMagicPacket -eq 'Enabled' }).Count
+                $bios       = if ($Parsed.BIOS_WOL_Status) { " · BIOS: $($Parsed.BIOS_WOL_Status)" } else { '' }
+                return "$wolEnabled/$nicCount NIC(s) with WOL enabled$bios"
+            }
+            '*Backup-TaskbarLayout*' {
+                if (-not $Parsed.Results) { return 'No profiles found' }
+                $ok = @($Parsed.Results | Where-Object { $_.Success -eq $true }).Count
+                $v  = if ($Parsed.IsWin11) { 'Win11' } else { 'Win10' }
+                return "$ok/$($Parsed.Results.Count) profile(s) backed up · $v"
+            }
+            '*Backup-WiFiProfiles*' {
+                if ($Parsed.WlanService -ne 'Running') { return 'No WLAN service — likely a desktop without WiFi' }
+                $ent    = if ($Parsed.EnterpriseCount -gt 0) { " · $($Parsed.EnterpriseCount) enterprise (no PSK)" } else { '' }
+                $active = if ($Parsed.ActiveSSID) { " · Connected: $($Parsed.ActiveSSID)" } else { '' }
+                return "$($Parsed.ExportedCount)/$($Parsed.ProfileCount) profile(s) exported$ent$active"
+            }
+            '*Set-WakeOnLan*' {
+                $changes  = if ($Parsed.Changes) { $Parsed.Changes.Count } else { 0 }
+                $nicOk    = @($Parsed.NICs | Where-Object { $_.Success -eq $true }).Count
+                $nicTotal = if ($Parsed.NICs) { $Parsed.NICs.Count } else { 0 }
+                $bios     = if ($Parsed.BIOS_WOL -and $Parsed.BIOS_WOL.Attempted) { " · BIOS WOL: $(if ($Parsed.BIOS_WOL.Success) {'OK'} else {'Failed'})" } else { '' }
+                return "$changes change(s) made · $nicOk/$nicTotal NIC(s) configured$bios"
+            }
+            '*Install-DellCommandTools*' {
+                if ($Parsed.DellDevice -eq $false) { return "Non-Dell ($($Parsed.Vendor)) — tool install skipped" }
+                $dcu = if ($Parsed.DCU -and $Parsed.DCU.Version) { "DCU v$($Parsed.DCU.Version)" } else { 'DCU not installed' }
+                $dcc = if ($Parsed.DCC -and $Parsed.DCC.Version) { "DCC v$($Parsed.DCC.Version)" } else { 'DCC not installed' }
+                return "$dcu · $dcc"
+            }
+            '*Update-Bios*' {
+                if ($Parsed.IsDell -eq $false) { return "Non-Dell ($($Parsed.Vendor)) — BIOS update skipped" }
+                if ($Parsed.ExitMeaning) { return $Parsed.ExitMeaning }
+                return 'Completed'
+            }
+            '*Update-Drivers*' {
+                if ($Parsed.IsDell -eq $false) { return "Non-Dell ($($Parsed.Vendor)) — driver update skipped" }
+                if ($Parsed.ExitMeaning) { return $Parsed.ExitMeaning }
+                return 'Completed'
+            }
+            '*Register-AutopilotDeviceCommunity*' {
+                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')  { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth' }
+                if ($Parsed.UploadStatus -eq 'RegisteredUnverified')  { return 'Script exited 0 but CSV absent — verify in Intune' }
+                if ($Parsed.Success -eq $true) {
+                    $s = 'Registered via community script'
+                    if ($Parsed.AuthAccount) { $s += " · Auth: $($Parsed.AuthAccount)" }
+                    if ($Parsed.AuthMethod)  { $s += " ($($Parsed.AuthMethod))" }
+                    return $s
+                }
+                $errSnip = if ($Parsed.Error) { '— ' + $Parsed.Error.Substring(0, [Math]::Min(60, $Parsed.Error.Length)) } else { '' }
+                return "Upload: $($Parsed.UploadStatus) $errSnip".Trim()
+            }
+            '*Register-AutopilotDevice*' {
+                if ($Parsed.Success -eq $true) {
+                    $s = "Registered · Serial: $($Parsed.SerialNumber)"
+                    if ($Parsed.ModuleVersion) { $s += " · Module v$($Parsed.ModuleVersion)" }
+                    return $s
+                }
+                if ($Parsed.UploadStatus) { return "Upload: $($Parsed.UploadStatus) · Serial: $($Parsed.SerialNumber)" }
+                return 'Completed'
+            }
+            '*Get-PreWipeSummary*' {
+                if ($Parsed.WipeVerdict) { return "$($Parsed.WipeVerdict) · $($Parsed.BlockerCount) blocker(s) · $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" }
                 return 'Completed'
             }
             default { return 'Completed' }
@@ -187,7 +288,7 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 if ($anyFail) { return @{ Verdict = 'FAIL'; Reason = 'Auto-copy failed for one or more profiles' } }
                 return @{ Verdict = 'PASS'; Reason = 'Downloads backed up to Documents' }
             }
-            '*Get-InstalledApplications*' { return @{ Verdict = 'PASS'; Reason = 'Informational' } }
+            '*Get-InstalledApplications*' { return @{ Verdict = 'PASS'; Reason = "$($Parsed.TotalCount) application(s) documented" } }
             '*Get-StorageMode*' {
                 if ($Parsed.StorageMode -match 'RAID|Intel RST|IntelRST') {
                     return @{ Verdict = 'WARN'; Reason = "Storage mode is $($Parsed.StorageMode) — may need AHCI conversion" }
@@ -246,8 +347,16 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 if ($anyFoundNotBacked) { return @{ Verdict = 'FAIL'; Reason = 'Signature backup failed' } }
                 return @{ Verdict = 'PASS'; Reason = 'Signatures backed up (or none found)' }
             }
-            '*Get-Printers*'              { return @{ Verdict = 'PASS'; Reason = 'Informational' } }
-            '*Get-DriveMappings*'         { return @{ Verdict = 'PASS'; Reason = 'Informational' } }
+            '*Get-Printers*' {
+                if (-not $Parsed.Printers -or $Parsed.Printers.Count -eq 0) { return @{ Verdict = 'PASS'; Reason = 'No printers found' } }
+                $net = @($Parsed.Printers | Where-Object { $_.Type -eq 'Network' }).Count
+                return @{ Verdict = 'PASS'; Reason = "$($Parsed.TotalPrinters) printer(s) documented ($net network)" }
+            }
+            '*Get-DriveMappings*' {
+                if (-not $Parsed.Results -or $Parsed.Results.Count -eq 0) { return @{ Verdict = 'PASS'; Reason = 'No drive mappings found' } }
+                $persistent = @($Parsed.Results | Where-Object { $_.Persistent }).Count
+                return @{ Verdict = 'PASS'; Reason = "$($Parsed.Results.Count) mapping(s) documented ($persistent persistent)" }
+            }
             '*Test-BitLockerEscrow*' {
                 if ($Parsed.AllEscrowed -eq $true)  { return @{ Verdict = 'PASS'; Reason = 'All drives escrowed to Entra ID' } }
                 if ($Parsed.AllEscrowed -eq $false) { return @{ Verdict = 'FAIL'; Reason = 'Escrow failed — BitLocker key not backed up' } }
@@ -266,23 +375,115 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 if ($Parsed.ProfileDownloaded) { return @{ Verdict = 'PASS'; Reason = 'Autopilot profile downloaded locally' } }
                 return @{ Verdict = 'FAIL'; Reason = 'No Autopilot profile found on device' }
             }
-            '*Get-TeamsData*'               { return @{ Verdict = 'PASS'; Reason = 'Informational' } }
-            '*Get-CredentialManagerEntries*'{ return @{ Verdict = 'PASS'; Reason = 'Informational' } }
-            '*Get-LocalAccounts*'           { return @{ Verdict = 'PASS'; Reason = 'Informational' } }
-            '*Register-AutopilotDevice*' {
-                if ($Parsed.Success -eq $true) { return @{ Verdict = 'PASS'; Reason = "Device registered (upload: $($Parsed.UploadStatus))" } }
-                if ($Parsed.UploadStatus -eq 'UploadFailed') { return @{ Verdict = 'FAIL'; Reason = "Autopilot upload failed: $($Parsed.Error)" } }
-                if ($Parsed.UploadStatus -eq 'HashCollected') { return @{ Verdict = 'WARN'; Reason = 'Hash collected but not uploaded' } }
-                return @{ Verdict = 'FAIL'; Reason = 'Registration did not complete successfully' }
+            '*Get-TeamsData*' {
+                if ($Parsed.AnyMediaFiles) { return @{ Verdict = 'WARN'; Reason = 'Teams meeting recordings found — back up before wiping' } }
+                $profCount = if ($null -ne $Parsed.ProfilesChecked) { $Parsed.ProfilesChecked } else { '?' }
+                return @{ Verdict = 'PASS'; Reason = "$profCount profile(s) checked — no meeting recordings" }
+            }
+            '*Get-CredentialManagerEntries*' {
+                $count = if ($null -ne $Parsed.EntryCount) { $Parsed.EntryCount } else { 0 }
+                return @{ Verdict = 'PASS'; Reason = "$count credential(s) documented" }
+            }
+            '*Get-LocalAccounts*' {
+                $adminCount = if ($null -ne $Parsed.AdminCount) { $Parsed.AdminCount } else { 0 }
+                if ($adminCount -gt 1) { return @{ Verdict = 'WARN'; Reason = "$adminCount admin accounts found — verify before wiping" } }
+                return @{ Verdict = 'PASS'; Reason = "$($Parsed.AccountCount) account(s) documented" }
+            }
+            '*Get-WindowsProductKey*' {
+                if ($Parsed.HasOEMKey -eq $true) { return @{ Verdict = 'PASS'; Reason = 'OEM embedded product key detected' } }
+                if ($Parsed.HasOEMKey -eq $false) { return @{ Verdict = 'WARN'; Reason = 'No embedded OEM key — document license before wiping' } }
+                return @{ Verdict = 'WARN'; Reason = 'Could not determine product key status' }
+            }
+            '*Get-DeviceHealth*' {
+                if ($Parsed.OverallStatus -eq 'HEALTHY') { return @{ Verdict = 'PASS'; Reason = 'No hardware issues detected' } }
+                if ($Parsed.OverallStatus -eq 'WARNINGS') {
+                    $warn = if ($Parsed.Warnings -and $Parsed.Warnings.Count -gt 0) { ($Parsed.Warnings | Select-Object -First 2) -join '; ' } else { 'Hardware warnings present' }
+                    return @{ Verdict = 'WARN'; Reason = $warn }
+                }
+                return @{ Verdict = 'WARN'; Reason = 'Device health status unknown' }
+            }
+            '*Test-BiosVersion*' {
+                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — BIOS version check not applicable' } }
+                if ($Parsed.Error) { return @{ Verdict = 'WARN'; Reason = "BIOS check error: $($Parsed.Error)" } }
+                if ($Parsed.UpdateAvailable -eq $true) { return @{ Verdict = 'WARN'; Reason = "BIOS update available: v$($Parsed.LatestAvailable) (current: v$($Parsed.CurrentVersion))" } }
+                return @{ Verdict = 'PASS'; Reason = "BIOS is current: v$($Parsed.CurrentVersion)" }
+            }
+            '*Test-DriverStatus*' {
+                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — Dell DCU driver check not applicable' } }
+                if ($Parsed.ProblematicDrivers -gt 0) { return @{ Verdict = 'WARN'; Reason = "$($Parsed.ProblematicDrivers) driver(s) with issues — run Update-Drivers (step 26)" } }
+                if ($Parsed.DCUScan -and $Parsed.DCUScan.UpdateAvailable) { return @{ Verdict = 'WARN'; Reason = 'Driver updates available via Dell Command Update' } }
+                return @{ Verdict = 'PASS'; Reason = "All $($Parsed.TotalDrivers) driver(s) healthy" }
+            }
+            '*Test-WakeOnLan*' {
+                if (-not $Parsed.NICs -or $Parsed.NICs.Count -eq 0) { return @{ Verdict = 'WARN'; Reason = 'No NICs found to check' } }
+                $notEnabled = @($Parsed.NICs | Where-Object { $_.WOLMagicPacket -ne 'Enabled' }).Count
+                if ($notEnabled -gt 0) { return @{ Verdict = 'WARN'; Reason = "$notEnabled NIC(s) without WOL — run Set-WakeOnLan (step 24)" } }
+                return @{ Verdict = 'PASS'; Reason = "WOL enabled on all $($Parsed.NICs.Count) NIC(s)" }
+            }
+            '*Backup-TaskbarLayout*' {
+                if (-not $Parsed.Results) { return @{ Verdict = 'PASS'; Reason = 'No profiles found' } }
+                $failed = @($Parsed.Results | Where-Object { $_.Success -ne $true }).Count
+                if ($failed -gt 0) { return @{ Verdict = 'WARN'; Reason = "Taskbar backup failed for $failed profile(s)" } }
+                return @{ Verdict = 'PASS'; Reason = "All $($Parsed.Results.Count) profile(s) backed up" }
+            }
+            '*Backup-WiFiProfiles*' {
+                if ($Parsed.WlanService -eq 'NotInstalled') { return @{ Verdict = 'PASS'; Reason = 'No WLAN adapter — desktop without WiFi' } }
+                if ($Parsed.WlanService -ne 'Running') { return @{ Verdict = 'WARN'; Reason = "WLAN service is '$($Parsed.WlanService)' — WiFi profiles may not be exported" } }
+                if ($Parsed.SecurityWarning) { return @{ Verdict = 'WARN'; Reason = 'PSK passwords in exported XML — secure C:\PreWipeOutput\WiFiProfiles\ before wiping' } }
+                if ($Parsed.ProfileCount -eq 0) { return @{ Verdict = 'PASS'; Reason = 'No WiFi profiles found' } }
+                return @{ Verdict = 'PASS'; Reason = "$($Parsed.ExportedCount)/$($Parsed.ProfileCount) profile(s) exported" }
+            }
+            '*Set-WakeOnLan*' {
+                if (-not $Parsed.NICs -or $Parsed.NICs.Count -eq 0) { return @{ Verdict = 'WARN'; Reason = 'No NICs found to configure' } }
+                $nicFailed = @($Parsed.NICs | Where-Object { $_.Success -ne $true }).Count
+                $biosOk    = ($Parsed.IsDell -eq $false) -or (-not $Parsed.BIOS_WOL) -or ($Parsed.BIOS_WOL.Attempted -eq $false) -or ($Parsed.BIOS_WOL.Success -eq $true)
+                if ($nicFailed -gt 0) { return @{ Verdict = 'WARN'; Reason = "WOL configuration failed on $nicFailed NIC(s)" } }
+                if (-not $biosOk) { return @{ Verdict = 'WARN'; Reason = 'BIOS WOL not set — DCC failed. Cold boot may be needed.' } }
+                return @{ Verdict = 'PASS'; Reason = "WOL configured on $($Parsed.NICs.Count) NIC(s)" }
+            }
+            '*Install-DellCommandTools*' {
+                if ($Parsed.DellDevice -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — Dell tools not applicable' } }
+                $dcuOk = $Parsed.DCU -and $Parsed.DCU.Success -eq $true
+                $dccOk = $Parsed.DCC -and $Parsed.DCC.Success -eq $true
+                if ($dcuOk -and $dccOk) { return @{ Verdict = 'PASS'; Reason = "DCU v$($Parsed.DCU.Version) and DCC v$($Parsed.DCC.Version) ready" } }
+                if (-not $dcuOk) { return @{ Verdict = 'FAIL'; Reason = "Dell Command Update not installed or failed: $(if ($Parsed.DCU) { $Parsed.DCU.Error } else { 'not found' })" } }
+                return @{ Verdict = 'WARN'; Reason = "Dell Command Configure not installed or failed: $(if ($Parsed.DCC) { $Parsed.DCC.Error } else { 'not found' })" }
+            }
+            '*Update-Bios*' {
+                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — BIOS update not applicable' } }
+                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $false) { return @{ Verdict = 'PASS'; Reason = $Parsed.ExitMeaning } }
+                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $true) { return @{ Verdict = 'WARN'; Reason = 'BIOS updated — reboot required before wiping' } }
+                if ($Parsed.Success -eq $false) { return @{ Verdict = 'FAIL'; Reason = "BIOS update failed: $($Parsed.ExitMeaning)" } }
+                return @{ Verdict = 'WARN'; Reason = 'BIOS update status unknown' }
+            }
+            '*Update-Drivers*' {
+                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — driver update not applicable' } }
+                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $false) { return @{ Verdict = 'PASS'; Reason = $Parsed.ExitMeaning } }
+                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $true) { return @{ Verdict = 'WARN'; Reason = 'Drivers updated — reboot required before wiping' } }
+                if ($Parsed.Success -eq $false) { return @{ Verdict = 'FAIL'; Reason = "Driver update failed: $($Parsed.ExitMeaning)" } }
+                return @{ Verdict = 'WARN'; Reason = 'Driver update status unknown' }
             }
             '*Register-AutopilotDeviceCommunity*' {
-                if ($Parsed.Success -eq $true)                             { return @{ Verdict = 'PASS'; Reason = "Device registered via community script (OAuth)" } }
-                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')      { return @{ Verdict = 'WARN'; Reason = 'Requires interactive login — run via [3] Run Single Step to use OAuth device code' } }
-                if ($Parsed.UploadStatus -eq 'ExecutionFailed')           { return @{ Verdict = 'FAIL'; Reason = "Community script execution failed: $($Parsed.Error)" } }
-                if ($Parsed.UploadStatus -eq 'Failed')                    { return @{ Verdict = 'FAIL'; Reason = if ($Parsed.Error) { $Parsed.Error } else { 'Community script reported failure' } } }
+                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')    { return @{ Verdict = 'WARN'; Reason = 'Requires interactive sign-in — run via [3] Run Single Step' } }
+                if ($Parsed.UploadStatus -eq 'RegisteredUnverified')    { return @{ Verdict = 'WARN'; Reason = 'Script exited 0 but CSV absent — verify registration in Intune' } }
+                if ($Parsed.Success -eq $true)                          { return @{ Verdict = 'PASS'; Reason = 'Device registered via community script (OAuth)' } }
+                if ($Parsed.UploadStatus -eq 'ExecutionFailed')         { return @{ Verdict = 'FAIL'; Reason = "Community script execution failed: $($Parsed.Error)" } }
+                if ($Parsed.UploadStatus -eq 'Failed')                  { return @{ Verdict = 'FAIL'; Reason = if ($Parsed.Error) { $Parsed.Error } else { 'Community script reported failure' } } }
                 return @{ Verdict = 'FAIL'; Reason = 'OAuth registration did not complete successfully' }
             }
-            default                         { return @{ Verdict = 'PASS'; Reason = 'Completed' } }
+            '*Register-AutopilotDevice*' {
+                if ($Parsed.Success -eq $true) { return @{ Verdict = 'PASS'; Reason = "Device registered (upload: $($Parsed.UploadStatus))" } }
+                if ($Parsed.UploadStatus -eq 'UploadFailed')   { return @{ Verdict = 'FAIL'; Reason = "Autopilot upload failed: $($Parsed.Error)" } }
+                if ($Parsed.UploadStatus -eq 'HashCollected')  { return @{ Verdict = 'WARN'; Reason = 'Hash collected but not yet uploaded' } }
+                return @{ Verdict = 'FAIL'; Reason = 'Registration did not complete successfully' }
+            }
+            '*Get-PreWipeSummary*' {
+                if ($Parsed.WipeVerdict -match '^READY TO WIPE$')     { return @{ Verdict = 'PASS'; Reason = "READY TO WIPE · $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" } }
+                if ($Parsed.WipeVerdict -match 'NOT READY')            { return @{ Verdict = 'FAIL'; Reason = "$($Parsed.BlockerCount) blocker(s): $(($Parsed.Blockers | Select-Object -First 2) -join '; ')" } }
+                if ($Parsed.WipeVerdict -match 'INCOMPLETE')           { return @{ Verdict = 'WARN'; Reason = "Incomplete — $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" } }
+                return @{ Verdict = 'WARN'; Reason = 'Summary status unknown' }
+            }
+            default { return @{ Verdict = 'PASS'; Reason = 'Completed' } }
         }
     } catch { return @{ Verdict = 'WARN'; Reason = "Evaluation error: $_" } }
 }
@@ -357,12 +558,238 @@ function Get-HtmlTable { # Extracts data table from step output
             '*Register-AutopilotDeviceCommunity*' {
                 $cols = @('Serial','AuthAccount','AuthMethod','UploadStatus','GraphModVer')
                 $rows = @([PSCustomObject]@{
-                    Serial       = if ($Parsed.SerialNumber)        { $Parsed.SerialNumber }        else { '(unknown)' }
-                    AuthAccount  = if ($Parsed.AuthAccount)         { $Parsed.AuthAccount }         else { '(community script)' }
-                    AuthMethod   = if ($Parsed.AuthMethod)          { $Parsed.AuthMethod }          else { '(community script)' }
-                    UploadStatus = if ($Parsed.UploadStatus)        { $Parsed.UploadStatus }        else { '(unknown)' }
-                    GraphModVer  = if ($Parsed.GraphModVersion)     { "v$($Parsed.GraphModVersion)" } else { '(unknown)' }
+                    Serial       = if ($Parsed.SerialNumber)    { $Parsed.SerialNumber }           else { '(unknown)' }
+                    AuthAccount  = if ($Parsed.AuthAccount)     { $Parsed.AuthAccount }            else { '(community script)' }
+                    AuthMethod   = if ($Parsed.AuthMethod)      { $Parsed.AuthMethod }             else { '(community script)' }
+                    UploadStatus = if ($Parsed.UploadStatus)    { $Parsed.UploadStatus }           else { '(unknown)' }
+                    GraphModVer  = if ($Parsed.GraphModVersion) { "v$($Parsed.GraphModVersion)" }  else { '(unknown)' }
                 })
+            }
+            '*Register-AutopilotDevice*' {
+                $cols = @('Serial','ModuleVersion','Hash','UploadStatus','GroupTag','AssignedUser')
+                $rows = @([PSCustomObject]@{
+                    Serial        = if ($Parsed.SerialNumber)   { $Parsed.SerialNumber }   else { '' }
+                    ModuleVersion = if ($Parsed.ModuleVersion)  { "v$($Parsed.ModuleVersion)" } else { '' }
+                    Hash          = if ($Parsed.HardwareHash)   { $Parsed.HardwareHash }   else { '' }
+                    UploadStatus  = if ($Parsed.UploadStatus)   { $Parsed.UploadStatus }   else { '' }
+                    GroupTag      = if ($Parsed.GroupTag)        { $Parsed.GroupTag }        else { '' }
+                    AssignedUser  = if ($Parsed.AssignedUser)   { $Parsed.AssignedUser }   else { '' }
+                })
+            }
+            '*Get-WindowsProductKey*' {
+                $cols = @('HasOEMKey','Channel','PartialKey','LicenseStatus','OS','Build')
+                $rows = @([PSCustomObject]@{
+                    HasOEMKey     = if ($Parsed.HasOEMKey -eq $true) { 'YES' } else { 'NO' }
+                    Channel       = if ($Parsed.Activation) { $Parsed.Activation.ProductKeyChannel } else { '' }
+                    PartialKey    = if ($Parsed.Activation -and $Parsed.Activation.PartialProductKey) { "XXXXX-$($Parsed.Activation.PartialProductKey)" } else { '' }
+                    LicenseStatus = if ($Parsed.Activation) { $Parsed.Activation.LicenseStatus } else { '' }
+                    OS            = if ($Parsed.OS) { $Parsed.OS.Caption } else { '' }
+                    Build         = if ($Parsed.OS) { $Parsed.OS.BuildNumber } else { '' }
+                })
+            }
+            '*Get-DeviceHealth*' {
+                if ($Parsed.Disks) {
+                    $cols = @('Disk','Type','SizeGB','Health','WearLevel','ReadErrors','WriteErrors')
+                    $rows = @($Parsed.Disks | ForEach-Object {
+                        [PSCustomObject]@{
+                            Disk        = $_.FriendlyName
+                            Type        = "$($_.MediaType) ($($_.BusType))"
+                            SizeGB      = if ($null -ne $_.SizeGB) { '{0:N0}' -f $_.SizeGB } else { '' }
+                            Health      = $_.HealthStatus
+                            WearLevel   = if ($null -ne $_.WearLevel) { "$($_.WearLevel)%" } else { 'N/A' }
+                            ReadErrors  = if ($null -ne $_.ReadErrors) { $_.ReadErrors } else { '0' }
+                            WriteErrors = if ($null -ne $_.WriteErrors) { $_.WriteErrors } else { '0' }
+                        }
+                    })
+                }
+            }
+            '*Get-TeamsData*' {
+                if ($Parsed.Results) {
+                    $cols = @('Profile','Classic','ClassicCacheMB','NewTeams','NewCacheMB','Recordings')
+                    $rows = @($Parsed.Results | ForEach-Object {
+                        [PSCustomObject]@{
+                            Profile        = $_.Profile
+                            Classic        = if ($_.ClassicTeamsPresent) { 'Yes' } else { 'No' }
+                            ClassicCacheMB = if ($null -ne $_.ClassicLocalCacheSizeMB) { '{0:N0}' -f $_.ClassicLocalCacheSizeMB } else { '0' }
+                            NewTeams       = if ($_.NewTeamsPresent) { 'Yes' } else { 'No' }
+                            NewCacheMB     = if ($null -ne $_.NewTeamsCacheSizeMB) { '{0:N0}' -f $_.NewTeamsCacheSizeMB } else { '0' }
+                            Recordings     = if ($_.MeetingMediaFiles) { $_.MeetingMediaFiles.Count } else { '0' }
+                        }
+                    })
+                }
+            }
+            '*Get-CredentialManagerEntries*' {
+                if ($Parsed.Entries) {
+                    $cols = @('Target','Type','User')
+                    $rows = @($Parsed.Entries | ForEach-Object { [PSCustomObject]@{ Target = $_.Target; Type = $_.Type; User = $_.User } })
+                }
+            }
+            '*Get-LocalAccounts*' {
+                if ($Parsed.NonSystemAccounts) {
+                    $cols = @('Name','Enabled','IsAdmin','LastLogon')
+                    $rows = @($Parsed.NonSystemAccounts | ForEach-Object {
+                        [PSCustomObject]@{
+                            Name      = $_.Name
+                            Enabled   = if ($_.Enabled) { 'Yes' } else { 'No' }
+                            IsAdmin   = if ($_.IsAdmin) { 'YES' } else { 'No' }
+                            LastLogon = if ($_.LastLogon) { try { ([datetime]$_.LastLogon).ToString('yyyy-MM-dd') } catch { $_.LastLogon } } else { 'Never' }
+                        }
+                    })
+                }
+            }
+            '*Test-BiosVersion*' {
+                $cols = @('Manufacturer','CurrentVersion','ReleaseDate','LatestAvailable','UpdateAvailable')
+                $rows = @([PSCustomObject]@{
+                    Manufacturer    = if ($Parsed.Manufacturer)     { $Parsed.Manufacturer }     else { '' }
+                    CurrentVersion  = if ($Parsed.CurrentVersion)   { $Parsed.CurrentVersion }   else { '' }
+                    ReleaseDate     = if ($Parsed.ReleaseDate)       { $Parsed.ReleaseDate }       else { '' }
+                    LatestAvailable = if ($Parsed.LatestAvailable)   { $Parsed.LatestAvailable }   else { 'N/A' }
+                    UpdateAvailable = if ($Parsed.UpdateAvailable -eq $true) { 'YES' } elseif ($Parsed.UpdateAvailable -eq $false) { 'No' } else { 'Unknown' }
+                })
+            }
+            '*Test-DriverStatus*' {
+                $driverList = if ($Parsed.Drivers) { @($Parsed.Drivers | Where-Object { $_.HasIssue -eq $true }) } else { @() }
+                if ($driverList.Count -eq 0 -and $Parsed.Drivers) { $driverList = @($Parsed.Drivers | Select-Object -First 15) }
+                if ($driverList.Count -gt 0) {
+                    $cols = @('DeviceName','Class','DriverVersion','HasIssue','IssueCode')
+                    $rows = @($driverList | ForEach-Object {
+                        [PSCustomObject]@{
+                            DeviceName    = $_.DeviceName
+                            Class         = $_.DeviceClass
+                            DriverVersion = $_.DriverVersion
+                            HasIssue      = if ($_.HasIssue) { 'YES' } else { 'No' }
+                            IssueCode     = if ($_.IssueCode) { $_.IssueCode } else { '' }
+                        }
+                    })
+                }
+            }
+            '*Test-WakeOnLan*' {
+                if ($Parsed.NICs) {
+                    $cols = @('NIC','WOLMagicPacket','WakeOnPattern','PMWakeEnabled')
+                    $rows = @($Parsed.NICs | ForEach-Object {
+                        [PSCustomObject]@{
+                            NIC            = $_.NICName
+                            WOLMagicPacket = $_.WOLMagicPacket
+                            WakeOnPattern  = $_.WakeOnPattern
+                            PMWakeEnabled  = $_.PMWakeEnabled
+                        }
+                    })
+                }
+            }
+            '*Backup-TaskbarLayout*' {
+                if ($Parsed.Results) {
+                    $cols = @('Profile','WindowsVer','FilesBackedUp','RegExported','Success')
+                    $rows = @($Parsed.Results | ForEach-Object {
+                        [PSCustomObject]@{
+                            Profile       = $_.Profile
+                            WindowsVer    = $_.WindowsVersion
+                            FilesBackedUp = if ($_.FilesBackedUp) { $_.FilesBackedUp.Count } else { 0 }
+                            RegExported   = if ($_.RegExported) { 'Yes' } else { 'No' }
+                            Success       = if ($_.Success) { 'Yes' } else { 'FAILED' }
+                        }
+                    })
+                }
+            }
+            '*Backup-WiFiProfiles*' {
+                if ($Parsed.Profiles) {
+                    $cols = @('SSID','Authentication','KeyType','Exported','Enterprise')
+                    $rows = @($Parsed.Profiles | ForEach-Object {
+                        [PSCustomObject]@{
+                            SSID           = $_.SSID
+                            Authentication = if ($_.Authentication) { $_.Authentication } else { 'Unknown' }
+                            KeyType        = if ($_.KeyType) { $_.KeyType } else { '' }
+                            Exported       = if ($_.Exported) { 'Yes' } else { 'No' }
+                            Enterprise     = if ($_.NeedsReauth) { 'YES' } else { 'No' }
+                        }
+                    })
+                }
+            }
+            '*Set-WakeOnLan*' {
+                if ($Parsed.NICs) {
+                    $cols = @('NIC','WOLMagicPacket','PMWakeEnabled','Success')
+                    $rows = @($Parsed.NICs | ForEach-Object {
+                        [PSCustomObject]@{
+                            NIC            = $_.NICName
+                            WOLMagicPacket = $_.WOLMagicPacket
+                            PMWakeEnabled  = $_.PMWakeEnabled
+                            Success        = if ($_.Success) { 'Yes' } else { 'FAILED' }
+                        }
+                    })
+                }
+            }
+            '*Install-DellCommandTools*' {
+                if ($Parsed.DellDevice -eq $true) {
+                    $cols = @('Tool','Version','Action','Success')
+                    $rows = @(
+                        [PSCustomObject]@{ Tool = 'Dell Command Update';    Version = if ($Parsed.DCU -and $Parsed.DCU.Version) { $Parsed.DCU.Version } else { 'N/A' }; Action = if ($Parsed.DCU) { $Parsed.DCU.Action } else { '' }; Success = if ($Parsed.DCU -and $Parsed.DCU.Success) { 'Yes' } else { 'No' } }
+                        [PSCustomObject]@{ Tool = 'Dell Command Configure'; Version = if ($Parsed.DCC -and $Parsed.DCC.Version) { $Parsed.DCC.Version } else { 'N/A' }; Action = if ($Parsed.DCC) { $Parsed.DCC.Action } else { '' }; Success = if ($Parsed.DCC -and $Parsed.DCC.Success) { 'Yes' } else { 'No' } }
+                    )
+                }
+            }
+            '*Update-Bios*' {
+                $cols = @('Vendor','ExitCode','Result','RebootNeeded')
+                $rows = @([PSCustomObject]@{
+                    Vendor       = if ($Parsed.Vendor)      { $Parsed.Vendor }      else { '' }
+                    ExitCode     = if ($null -ne $Parsed.ExitCode) { $Parsed.ExitCode } else { 'N/A' }
+                    Result       = if ($Parsed.ExitMeaning) { $Parsed.ExitMeaning } else { 'N/A' }
+                    RebootNeeded = if ($Parsed.RebootNeeded -eq $true) { 'YES' } else { 'No' }
+                })
+            }
+            '*Update-Drivers*' {
+                $cols = @('Vendor','ExitCode','Result','RebootNeeded')
+                $rows = @([PSCustomObject]@{
+                    Vendor       = if ($Parsed.Vendor)      { $Parsed.Vendor }      else { '' }
+                    ExitCode     = if ($null -ne $Parsed.ExitCode) { $Parsed.ExitCode } else { 'N/A' }
+                    Result       = if ($Parsed.ExitMeaning) { $Parsed.ExitMeaning } else { 'N/A' }
+                    RebootNeeded = if ($Parsed.RebootNeeded -eq $true) { 'YES' } else { 'No' }
+                })
+            }
+            '*Test-BitLockerEscrow*' {
+                if ($Parsed.Volumes) {
+                    $cols = @('Drive','VolumeType','EncryptionStatus','PercentEncrypted','EscrowStatus')
+                    $rows = @($Parsed.Volumes | ForEach-Object {
+                        [PSCustomObject]@{
+                            Drive            = $_.DriveLetter
+                            VolumeType       = $_.VolumeType
+                            EncryptionStatus = $_.EncryptionStatus
+                            PercentEncrypted = if ($null -ne $_.PercentEncrypted) { "$($_.PercentEncrypted)%" } else { '' }
+                            EscrowStatus     = $_.EscrowStatus
+                        }
+                    })
+                }
+            }
+            '*Test-WinRE*' {
+                $cols = @('WinREEnabled','Location','Status')
+                $rows = @([PSCustomObject]@{
+                    WinREEnabled = if ($Parsed.WinREEnabled) { 'YES' } else { 'NO' }
+                    Location     = if ($Parsed.WinRELocation) { $Parsed.WinRELocation } else { 'N/A' }
+                    Status       = if ($Parsed.WinREEnabled) { 'OK' } else { 'Missing — run: reagentc /enable' }
+                })
+            }
+            '*Test-AutopilotReadiness*' {
+                if ($Parsed.Checks -and $Parsed.Checks.PSObject.Properties) {
+                    $cols = @('Check','Status','Detail')
+                    $rows = @($Parsed.Checks.PSObject.Properties | ForEach-Object {
+                        $chk = $_.Value
+                        [PSCustomObject]@{
+                            Check  = $_.Name
+                            Status = if ($chk.Status)  { $chk.Status }  else { '' }
+                            Detail = if ($chk.Detail)  { $chk.Detail }  else { '' }
+                        }
+                    })
+                } elseif ($Parsed.Failures -and $Parsed.Failures.Count -gt 0) {
+                    $cols = @('Failure')
+                    $rows = @($Parsed.Failures | ForEach-Object { [PSCustomObject]@{ Failure = $_ } })
+                }
+            }
+            '*Get-PreWipeSummary*' {
+                if ($Parsed.Blockers -and $Parsed.Blockers.Count -gt 0) {
+                    $cols = @('Blocker')
+                    $rows = @($Parsed.Blockers | ForEach-Object { [PSCustomObject]@{ Blocker = $_ } })
+                } elseif ($Parsed.PhaseSummary) {
+                    $cols = @('Phase','ScriptsRan','ScriptsTotal','Completion')
+                    $rows = @($Parsed.PhaseSummary)
+                }
             }
         }
     } catch { return '' }
