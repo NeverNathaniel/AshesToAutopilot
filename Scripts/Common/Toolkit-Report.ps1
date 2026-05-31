@@ -195,7 +195,8 @@ function Get-StepSummary { # Generates human-readable summary from step output
                 return 'Completed'
             }
             '*Register-AutopilotDeviceCommunity*' {
-                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth') { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth' }
+                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')  { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth' }
+                if ($Parsed.UploadStatus -eq 'RegisteredUnverified')  { return 'Script exited 0 but CSV absent — verify in Intune' }
                 if ($Parsed.Success -eq $true) {
                     $s = 'Registered via community script'
                     if ($Parsed.AuthAccount) { $s += " · Auth: $($Parsed.AuthAccount)" }
@@ -376,7 +377,8 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
             }
             '*Get-TeamsData*' {
                 if ($Parsed.AnyMediaFiles) { return @{ Verdict = 'WARN'; Reason = 'Teams meeting recordings found — back up before wiping' } }
-                return @{ Verdict = 'PASS'; Reason = "$($Parsed.ProfilesChecked) profile(s) checked — no meeting recordings" }
+                $profCount = if ($null -ne $Parsed.ProfilesChecked) { $Parsed.ProfilesChecked } else { '?' }
+                return @{ Verdict = 'PASS'; Reason = "$profCount profile(s) checked — no meeting recordings" }
             }
             '*Get-CredentialManagerEntries*' {
                 $count = if ($null -ne $Parsed.EntryCount) { $Parsed.EntryCount } else { 0 }
@@ -425,7 +427,8 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 return @{ Verdict = 'PASS'; Reason = "All $($Parsed.Results.Count) profile(s) backed up" }
             }
             '*Backup-WiFiProfiles*' {
-                if ($Parsed.WlanService -ne 'Running') { return @{ Verdict = 'PASS'; Reason = 'No WLAN service — not a wireless device' } }
+                if ($Parsed.WlanService -eq 'NotInstalled') { return @{ Verdict = 'PASS'; Reason = 'No WLAN adapter — desktop without WiFi' } }
+                if ($Parsed.WlanService -ne 'Running') { return @{ Verdict = 'WARN'; Reason = "WLAN service is '$($Parsed.WlanService)' — WiFi profiles may not be exported" } }
                 if ($Parsed.SecurityWarning) { return @{ Verdict = 'WARN'; Reason = 'PSK passwords in exported XML — secure C:\PreWipeOutput\WiFiProfiles\ before wiping' } }
                 if ($Parsed.ProfileCount -eq 0) { return @{ Verdict = 'PASS'; Reason = 'No WiFi profiles found' } }
                 return @{ Verdict = 'PASS'; Reason = "$($Parsed.ExportedCount)/$($Parsed.ProfileCount) profile(s) exported" }
@@ -443,8 +446,8 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 $dcuOk = $Parsed.DCU -and $Parsed.DCU.Success -eq $true
                 $dccOk = $Parsed.DCC -and $Parsed.DCC.Success -eq $true
                 if ($dcuOk -and $dccOk) { return @{ Verdict = 'PASS'; Reason = "DCU v$($Parsed.DCU.Version) and DCC v$($Parsed.DCC.Version) ready" } }
-                if (-not $dcuOk) { return @{ Verdict = 'FAIL'; Reason = "Dell Command Update installation failed: $($Parsed.DCU.Error)" } }
-                return @{ Verdict = 'WARN'; Reason = "Dell Command Configure installation failed: $($Parsed.DCC.Error)" }
+                if (-not $dcuOk) { return @{ Verdict = 'FAIL'; Reason = "Dell Command Update not installed or failed: $(if ($Parsed.DCU) { $Parsed.DCU.Error } else { 'not found' })" } }
+                return @{ Verdict = 'WARN'; Reason = "Dell Command Configure not installed or failed: $(if ($Parsed.DCC) { $Parsed.DCC.Error } else { 'not found' })" }
             }
             '*Update-Bios*' {
                 if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — BIOS update not applicable' } }
@@ -461,10 +464,11 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 return @{ Verdict = 'WARN'; Reason = 'Driver update status unknown' }
             }
             '*Register-AutopilotDeviceCommunity*' {
-                if ($Parsed.Success -eq $true)                        { return @{ Verdict = 'PASS'; Reason = 'Device registered via community script (OAuth)' } }
-                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth') { return @{ Verdict = 'WARN'; Reason = 'Requires interactive sign-in — run via [3] Run Single Step' } }
-                if ($Parsed.UploadStatus -eq 'ExecutionFailed')      { return @{ Verdict = 'FAIL'; Reason = "Community script execution failed: $($Parsed.Error)" } }
-                if ($Parsed.UploadStatus -eq 'Failed')               { return @{ Verdict = 'FAIL'; Reason = if ($Parsed.Error) { $Parsed.Error } else { 'Community script reported failure' } } }
+                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')    { return @{ Verdict = 'WARN'; Reason = 'Requires interactive sign-in — run via [3] Run Single Step' } }
+                if ($Parsed.UploadStatus -eq 'RegisteredUnverified')    { return @{ Verdict = 'WARN'; Reason = 'Script exited 0 but CSV absent — verify registration in Intune' } }
+                if ($Parsed.Success -eq $true)                          { return @{ Verdict = 'PASS'; Reason = 'Device registered via community script (OAuth)' } }
+                if ($Parsed.UploadStatus -eq 'ExecutionFailed')         { return @{ Verdict = 'FAIL'; Reason = "Community script execution failed: $($Parsed.Error)" } }
+                if ($Parsed.UploadStatus -eq 'Failed')                  { return @{ Verdict = 'FAIL'; Reason = if ($Parsed.Error) { $Parsed.Error } else { 'Community script reported failure' } } }
                 return @{ Verdict = 'FAIL'; Reason = 'OAuth registration did not complete successfully' }
             }
             '*Register-AutopilotDevice*' {

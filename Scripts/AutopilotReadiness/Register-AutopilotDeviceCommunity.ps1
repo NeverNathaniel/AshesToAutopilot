@@ -158,6 +158,7 @@ try {
         Write-Info 'Installing Microsoft.Graph.Authentication...'
         Install-Module 'Microsoft.Graph.Authentication' -Force -Scope AllUsers -AllowClobber -MaximumVersion '2.9.1' -ErrorAction Stop
         $mgAuth = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+        if (-not $mgAuth) { throw 'Install reported success but module not found in PSModulePath — re-run step 25.' }
     }
     $Result.GraphModVersion = $mgAuth.Version.ToString()
     Import-Module 'Microsoft.Graph.Authentication' -Force -ErrorAction Stop
@@ -195,8 +196,10 @@ if ($NonInteractive -and (-not $AppId) -and (-not $CertificateThumbprint) -and (
     Write-ErrorLog $msg
     $Result.Error        = $msg
     $Result.UploadStatus = 'NeedsInteractiveAuth'
-    $Result | ConvertTo-Json -Depth 5
-    exit 1
+    $jsonEarly = $Result | ConvertTo-Json -Depth 5
+    $jsonEarly | Out-File "$LogDir\$ScriptName-Report.json" -Force -Encoding UTF8 -ErrorAction SilentlyContinue
+    $jsonEarly
+    exit 0
 }
 
 # Only pre-authenticate in interactive mode (no credentials supplied).
@@ -292,6 +295,7 @@ $communityExitCode = 0
 $communityOutput   = $null
 
 try {
+    $LASTEXITCODE = 0
     if ($NonInteractive) {
         # Capture all output so we can build our JSON result
         $communityOutput   = & $communityScriptPath @communityArgs 2>&1 | Out-String
@@ -300,7 +304,7 @@ try {
         Write-Log "Community script output:`n$communityOutput"
 
         # Trim output for JSON (avoid huge strings)
-        $Result.CommunityOutput = $communityOutput.Trim() -replace '(?m)^\s+', '  ' | Out-String
+        $Result.CommunityOutput = $communityOutput.Trim() -replace '(?m)^\s+', '  '
         if ($Result.CommunityOutput.Length -gt 2000) {
             $Result.CommunityOutput = $Result.CommunityOutput.Substring(0, 2000) + '...[truncated]'
         }
@@ -364,9 +368,9 @@ if ($communityExitCode -eq 0) {
         Write-OK  'Device successfully registered with Autopilot'
         Write-Log 'Registration: success (exit code 0, hash confirmed in CSV)'
     } else {
-        $Result.UploadStatus = 'Registered'
-        Write-OK  'Community script completed successfully (exit code 0)'
-        Write-Log 'Registration: success (exit code 0, CSV not found — may have been cleaned up)'
+        $Result.UploadStatus = 'RegisteredUnverified'
+        Write-OK  'Community script completed (exit code 0) — CSV absent, registration unconfirmed'
+        Write-Log 'Registration: unverified (exit code 0, CSV not found — check Intune to confirm)'
     }
 } else {
     $Result.Success      = $false
