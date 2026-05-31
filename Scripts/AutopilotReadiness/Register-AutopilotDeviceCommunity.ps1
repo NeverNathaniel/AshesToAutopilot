@@ -270,8 +270,11 @@ Write-Log "Running get-windowsautopilotinfocommunity.ps1 with -Online..."
 
 $csvPath = "$OutputRoot\AutopilotHash_Community.csv"
 
-# Build the argument list for the community script
-$communityArgs = @('-Online', '-OutputFile', $csvPath)
+# Build the argument list for the community script.
+# NOTE: -OutputFile is in the 'Default' parameter set; -Online activates the 'Online'
+# parameter set. Passing both triggers "positional parameter cannot be found" error.
+# With -Online the script uploads directly to Intune and does not write a local CSV.
+$communityArgs = @('-Online')
 if ($GroupTag)               { $communityArgs += '-GroupTag';               $communityArgs += $GroupTag }
 if ($AssignedUser)           { $communityArgs += '-AssignedUser';           $communityArgs += $AssignedUser }
 if ($TenantId)               { $communityArgs += '-TenantId';               $communityArgs += $TenantId }
