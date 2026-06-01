@@ -113,10 +113,12 @@ function Get-StepSummary { # Generates human-readable summary from step output
             }
             '*Test-BitLockerEscrow*' {
                 if ($null -eq $Parsed.AllEscrowed) { return 'Completed' }
-                return if ($Parsed.AllEscrowed) { 'All drives escrowed to Entra ID' } else { 'Escrow failed on one or more drives' }
+                if ($Parsed.AllEscrowed) { return 'All drives escrowed to Entra ID' }
+                return 'Escrow failed on one or more drives'
             }
             '*Test-WinRE*' {
-                return if ($Parsed.WinREEnabled) { "WinRE enabled — $($Parsed.WinRELocation)" } else { 'WinRE NOT enabled' }
+                if ($Parsed.WinREEnabled) { return "WinRE enabled — $($Parsed.WinRELocation)" }
+                return 'WinRE NOT enabled'
             }
             '*Test-AutopilotReadiness*' {
                 if ($Parsed.OverallStatus) { return $Parsed.OverallStatus }

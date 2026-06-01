@@ -176,7 +176,7 @@ function Write-RunHeader { # Displays run mode header
 
 function Write-StepLine { # Writes step header during run
     param([int]$Num, [int]$Total, [PSCustomObject]$Step)
-    $label = " ── [$Num/$Total]  $($Step.DisplayName) "
+    $label = " ── [Step $($Step.Index)  ·  $Num/$Total]  $($Step.DisplayName) "
     $dash  = '─' * [Math]::Max(2, 68 - $label.Length)
     Write-Host ''
     Write-Host "  $label$dash" -ForegroundColor DarkCyan

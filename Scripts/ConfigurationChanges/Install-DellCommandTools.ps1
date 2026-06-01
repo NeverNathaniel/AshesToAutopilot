@@ -134,6 +134,17 @@ try {
             Write-Log "Running DCU installer silently..."
             $proc = Start-Process -FilePath $DCUInstaller -ArgumentList '/s' -Wait -PassThru
             Write-Log "DCU installer exit code: $($proc.ExitCode)"
+            if ($proc.ExitCode -ne 0) {
+                $exitMsg = switch ($proc.ExitCode) {
+                    1603 { 'Fatal error during installation — check Windows Installer logs' }
+                    1638 { 'A newer version of Dell Command Update is already installed' }
+                    3010 { 'Installation succeeded — reboot required to complete' }
+                    500  { 'Installer returned 500 — possible conflict or missing prerequisite; try rebooting and re-running, or install DCU manually from dell.com/support' }
+                    default { "Installer returned exit code $($proc.ExitCode)" }
+                }
+                Write-Log "DCU installer: $exitMsg" 'WARN'
+                if ($proc.ExitCode -ne 3010) { $DCUResult.Error = $exitMsg }
+            }
         }
 
         # Verify install
