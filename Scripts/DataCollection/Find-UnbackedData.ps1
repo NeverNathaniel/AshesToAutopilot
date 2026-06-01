@@ -1,14 +1,12 @@
 <#
 .SYNOPSIS
-    Scans user profiles for data not inside OneDrive-synced folders and flags non-standard apps.
+    Scans user profiles for data not inside OneDrive-synced folders.
 
 .DESCRIPTION
     For each active user profile:
     - Scans for PST files, SSH keys, Sticky Notes, VPN configs, database files (.mdb/.accdb/.sqlite/.db),
       personal certificates (.pfx/.cer), QuickBooks files (.qbw/.qbb), local OneNote notebooks,
       and files on local drives outside any OneDrive folder.
-    - Lists non-standard installed applications (ignoring Office, .NET, Visual C++, browsers,
-      Windows built-ins, Dell tools, SentinelOne, Adobe Reader).
     - Interactive mode: displays findings and pauses once for tech review.
     - NonInteractive mode: outputs JSON only.
 
@@ -46,24 +44,6 @@ if (-not (Test-AdminElevation)) { exit 1 }
 #region --- Profile Enumeration ---
 $Profiles = @(Get-ActiveUserProfile)
 Write-Log "Active profiles to check: $($Profiles.Count)"
-#endregion
-
-#region --- App Ignore List ---
-$IgnoredApps = @(
-    '*Microsoft Office*', '*Microsoft 365*', '*.NET*', '*Visual C++*',
-    '*Visual Studio*', '*Windows*', '*Google Chrome*', '*Microsoft Edge*',
-    '*Brave*', '*Mozilla Firefox*', '*Dell*', '*SentinelOne*', '*Adobe Reader*',
-    '*Adobe Acrobat Reader*', '*Microsoft Visual C++*', '*Intel*Driver*',
-    '*Realtek*', '*NVIDIA*Graphics*', '*Windows SDK*'
-)
-
-function Test-AppIgnored {
-    param([string]$AppName)
-    foreach ($pattern in $IgnoredApps) {
-        if ($AppName -like $pattern) { return $true }
-    }
-    return $false
-}
 #endregion
 
 #region --- Scan Functions ---
@@ -184,28 +164,6 @@ function Search-UnbackedFiles {
 }
 #endregion
 
-#region --- Non-Standard Apps ---
-function Get-NonStandardApps {
-    $regPaths = @(
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
-        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
-    )
-    $apps = @()
-    foreach ($path in $regPaths) {
-        $entries = Get-ItemProperty $path -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -and -not (Test-AppIgnored $_.DisplayName) }
-        foreach ($e in $entries) {
-            $apps += [PSCustomObject]@{
-                Name      = $e.DisplayName
-                Version   = $e.DisplayVersion
-                Publisher = $e.Publisher
-            }
-        }
-    }
-    return $apps | Sort-Object Name -Unique
-}
-#endregion
-
 #region --- Main ---
 $AllProfileFindings = @()
 
@@ -230,21 +188,12 @@ foreach ($Profile in $Profiles) {
         FindingCount = $findings.Count
     }
 
-    Write-Log "  Found $($findings.Count) potentially unbacked items for $ProfileName"
-}
-
-$NonStandardApps = @()
-try {
-    $NonStandardApps = Get-NonStandardApps
-    Write-Log "Non-standard apps found: $($NonStandardApps.Count)"
-} catch {
-    Write-ErrorLog "App scan failed: $_"
+    Write-Log "  Found $($findings.Count) items not backed up for $ProfileName"
 }
 
 $Result = [PSCustomObject]@{
     Timestamp       = (Get-Date -Format 'o')
     ProfileFindings = $AllProfileFindings
-    NonStandardApps = $NonStandardApps
 }
 
 $Result | ConvertTo-Json -Depth 10 | Out-File "$OutputRoot\Logs\Find-UnbackedData-Report.json" -Force
@@ -255,17 +204,12 @@ if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 10
 } else {
     Write-Host ""
-    Write-Host "=== Unbacked Data Findings ===" -ForegroundColor Cyan
+    Write-Host "=== Not-Backed-Up Data Findings ===" -ForegroundColor Cyan
     foreach ($pf in $AllProfileFindings) {
-        Write-Host "  Profile: $($pf.Profile) - $($pf.FindingCount) item(s)"
+        Write-Host "  Profile: $($pf.Profile) - $($pf.FindingCount) item(s) not backed up"
         foreach ($f in $pf.Findings) {
             Write-Host "    [$($f.Category)] $($f.Path)"
         }
-    }
-    Write-Host ""
-    Write-Host "=== Non-Standard Applications ($($NonStandardApps.Count)) ===" -ForegroundColor Yellow
-    foreach ($app in $NonStandardApps) {
-        Write-Host "  $($app.Name) v$($app.Version) ($($app.Publisher))"
     }
     Write-Host ""
     Write-Host "Full report: $OutputRoot\Logs\Find-UnbackedData-Report.json"
