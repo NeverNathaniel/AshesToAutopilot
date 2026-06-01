@@ -296,33 +296,43 @@ if (-not $NonInteractive) {
 
 $communityExitCode = 0
 $communityOutput   = $null
+$invokeArgs        = $communityArgs
 
-try {
-    $LASTEXITCODE = 0
-    if ($NonInteractive) {
-        # Capture all output so we can build our JSON result
-        $communityOutput   = & $communityScriptPath @communityArgs 2>&1 | Out-String
-        $communityExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-        Write-Log "Community script exit code: $communityExitCode"
-        Write-Log "Community script output:`n$communityOutput"
+for ($attempt = 0; $attempt -le 1; $attempt++) {
+    try {
+        $LASTEXITCODE = 0
+        if ($NonInteractive) {
+            # Capture all output so we can build our JSON result
+            $communityOutput   = & $communityScriptPath @invokeArgs 2>&1 | Out-String
+            $communityExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+            Write-Log "Community script exit code: $communityExitCode"
+            Write-Log "Community script output:`n$communityOutput"
 
-        # Trim output for JSON (avoid huge strings)
-        $Result.CommunityOutput = $communityOutput.Trim() -replace '(?m)^\s+', '  '
-        if ($Result.CommunityOutput.Length -gt 2000) {
-            $Result.CommunityOutput = $Result.CommunityOutput.Substring(0, 2000) + '...[truncated]'
+            # Trim output for JSON (avoid huge strings)
+            $Result.CommunityOutput = $communityOutput.Trim() -replace '(?m)^\s+', '  '
+            if ($Result.CommunityOutput.Length -gt 2000) {
+                $Result.CommunityOutput = $Result.CommunityOutput.Substring(0, 2000) + '...[truncated]'
+            }
+        } else {
+            # Let the community script write to the console directly — the user sees live output
+            & $communityScriptPath @invokeArgs
+            $communityExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+            Write-Log "Community script exit code: $communityExitCode"
         }
-    } else {
-        # Let the community script write to the console directly — the user sees live output
-        & $communityScriptPath @communityArgs
-        $communityExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-        Write-Log "Community script exit code: $communityExitCode"
+        break
+    } catch {
+        if ($attempt -eq 0 -and ($invokeArgs -contains '-Assign') -and "$_" -match 'positional parameter') {
+            Write-Log "-Assign not supported in this script version — retrying without it" 'WARN'
+            if (-not $NonInteractive) { Write-Wrn "-Assign not supported — retrying registration without assignment wait" }
+            $invokeArgs = $invokeArgs | Where-Object { $_ -ne '-Assign' }
+        } else {
+            Write-ErrorLog "Community script execution failed: $_"
+            $Result.Error        = "Community script failed: $_"
+            $Result.UploadStatus = 'ExecutionFailed'
+            if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
+            exit 1
+        }
     }
-} catch {
-    Write-ErrorLog "Community script execution failed: $_"
-    $Result.Error        = "Community script failed: $_"
-    $Result.UploadStatus = 'ExecutionFailed'
-    if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
-    exit 1
 }
 
 if (-not $NonInteractive) {
