@@ -12,16 +12,11 @@ function Get-ActionInstruction {
         '*Test-BitLockerEscrow*'             { return 'Re-run step 23 to escrow the BitLocker key to Entra ID. Do not wipe until the key is backed up.' }
         '*Test-AutopilotReadiness*'          { return 'Device does not meet Autopilot hardware requirements. Check TPM version, UEFI mode, and Secure Boot status before proceeding.' }
         '*Get-AutopilotAssignment*'          { return 'Assign the device an Autopilot profile in Intune (Devices &rsaquo; Enrollment &rsaquo; Autopilot) before wiping.' }
-        '*Register-AutopilotDeviceCommunity*'{ return 'OAuth registration failed. Re-run step 32 interactively via [3] Run Single Step and sign in when prompted. For NeedsInteractiveAuth, choose Run Single Step from the main menu.' }
-        '*Register-AutopilotDevice*'         { return 'Hardware hash upload failed. Re-run step 30. If the issue persists, upload the hash CSV manually via Intune.' }
+        '*Register-AutopilotDeviceCommunity*'{ return 'OAuth registration failed. Re-run via [3] Run Single Step and sign in when prompted. For NeedsInteractiveAuth, choose Run Single Step from the main menu.' }
         '*Get-DownloadsSize*'                { return 'Auto-copy to Documents failed. Manually copy the Downloads folder contents to a safe location before wiping.' }
-        '*Test-BiosVersion*'                 { return 'Run Update-BIOS (step 27) to apply the available BIOS update before wiping.' }
-        '*Test-DriverStatus*'                { return 'Run Update-Drivers (step 26) to apply available driver updates before wiping.' }
-        '*Test-WakeOnLan*'                   { return 'Run Set-Wake-on-LAN (step 24) to enable WOL on this device before wiping.' }
-        '*Set-WakeOnLan*'                    { return 'WOL configuration partially failed. Check NIC power management settings in Device Manager and re-run step 24.' }
-        '*Install-DellCommandTools*'         { return 'Re-run step 25. Dell Command Update and Configure are required for BIOS and driver updates on Dell hardware.' }
-        '*Update-Bios*'                      { return 'Reboot the device to complete the BIOS update, then verify the BIOS version before wiping.' }
-        '*Update-Drivers*'                   { return 'Reboot the device to complete driver installation, then proceed with the wipe from a clean boot.' }
+        '*Invoke-BiosUpdate*'                { return 'BIOS update failed. Check the DCU log at C:\PreWipeOutput\Logs\DCU-BIOS-Update.log. If a reboot is needed, reboot and re-verify.' }
+        '*Invoke-DriverUpdate*'              { return 'Driver update failed. Check the DCU log at C:\PreWipeOutput\Logs\DCU-Driver-Update.log. If a reboot is needed, reboot and re-verify.' }
+        '*Enable-WakeOnLan*'                 { return 'WoL configuration failed. Check NIC power management in Device Manager and re-run step 16.' }
         '*Get-TeamsData*'                    { return 'Back up Teams meeting recordings before wiping. Files are typically in C:\Users\&lt;user&gt;\Videos or OneDrive\Recordings.' }
         '*Get-LocalAccounts*'                { return 'Verify local admin accounts with the end user. Remove any unexpected admin accounts before wiping.' }
         default                              { return [System.Web.HttpUtility]::HtmlEncode($VerdictReason) }
@@ -42,9 +37,8 @@ function Get-StepSummary { # Generates human-readable summary from step output
             '*Find-UnbackedData*' {
                 $totalFindings = 0
                 if ($Parsed.ProfileFindings) { $Parsed.ProfileFindings | ForEach-Object { $totalFindings += $_.FindingCount } }
-                $appCount = if ($Parsed.NonStandardApps) { $Parsed.NonStandardApps.Count } else { 0 }
-                if ($totalFindings -eq 0 -and $appCount -eq 0) { return 'Clean — nothing found' }
-                return "$totalFindings item(s) at risk, $appCount non-std app(s)"
+                if ($totalFindings -eq 0) { return 'Clean — nothing found' }
+                return "$totalFindings item(s) not backed up"
             }
             '*Get-DownloadsSize*' {
                 if (-not $Parsed.Results) { return 'No profiles' }
@@ -56,7 +50,10 @@ function Get-StepSummary { # Generates human-readable summary from step output
                 $copied = @($Parsed.Results | Where-Object { $_.CopySuccess -eq $true }).Count
                 return "$sizeStr across $($Parsed.Results.Count) user(s)  $copied/$($Parsed.Results.Count) copied"
             }
-            '*Get-InstalledApplications*' { return "$($Parsed.TotalCount) apps ($($Parsed.MachineCount) machine, $($Parsed.UserCount) user)" }
+            '*Get-InstalledApplications*' {
+                $nonStd = if ($null -ne $Parsed.NonStandardCount) { ", $($Parsed.NonStandardCount) non-standard" } else { '' }
+                return "$($Parsed.TotalCount) apps ($($Parsed.MachineCount) machine, $($Parsed.UserCount) user$nonStd)"
+            }
             '*Get-StorageMode*' {
                 $diskInfo = ''
                 if ($Parsed.Disks -and $Parsed.Disks.Count -gt 0) {
@@ -141,23 +138,23 @@ function Get-StepSummary { # Generates human-readable summary from step output
             }
             '*Get-CredentialManagerEntries*' { return "$($Parsed.EntryCount) credential(s) in Windows Credential Manager" }
             '*Get-LocalAccounts*' { return "$($Parsed.AccountCount) account(s) · $($Parsed.AdminCount) admin(s)" }
-            '*Test-BiosVersion*' {
-                if (-not $Parsed.IsDell) { return "Non-Dell ($($Parsed.Manufacturer)) — BIOS check skipped" }
-                if ($Parsed.Error) { return "BIOS check error: $($Parsed.Error)" }
-                $upd = if ($Parsed.UpdateAvailable -eq $true) { " · Update available: v$($Parsed.LatestAvailable)" } else { ' · Up to date' }
+            '*Invoke-BiosUpdate*' {
+                if (-not $Parsed.IsDell) { return "Non-Dell ($($Parsed.Vendor)) — BIOS update skipped" }
+                if ($Parsed.Error -and -not $Parsed.Success) { return "Error: $($Parsed.Error)" }
+                $upd = if ($Parsed.UpdateFound -eq $true) { ' · Update applied' } elseif ($Parsed.UpdateFound -eq $false) { ' · Already current' } else { '' }
                 return "BIOS v$($Parsed.CurrentVersion)$upd"
             }
-            '*Test-DriverStatus*' {
-                if (-not $Parsed.IsDell) { return "Non-Dell ($($Parsed.Manufacturer)) — Dell DCU driver check skipped" }
+            '*Invoke-DriverUpdate*' {
                 $prob = if ($Parsed.ProblematicDrivers -gt 0) { " · $($Parsed.ProblematicDrivers) problematic" } else { '' }
-                $dcu  = if ($Parsed.DCUScan -and $Parsed.DCUScan.UpdateAvailable) { ' · DCU updates available' } else { '' }
+                $dcu  = if ($Parsed.DCUScan -and $Parsed.DCUScan.UpdateAvailable) { ' · updates applied' } elseif ($Parsed.UpdateFound -eq $false) { ' · drivers current' } else { '' }
                 return "$($Parsed.TotalDrivers) driver(s)$prob$dcu"
             }
-            '*Test-WakeOnLan*' {
+            '*Enable-WakeOnLan*' {
                 $nicCount   = if ($Parsed.NICs) { $Parsed.NICs.Count } else { 0 }
                 $wolEnabled = @($Parsed.NICs | Where-Object { $_.WOLMagicPacket -eq 'Enabled' }).Count
-                $bios       = if ($Parsed.BIOS_WOL_Status) { " · BIOS: $($Parsed.BIOS_WOL_Status)" } else { '' }
-                return "$wolEnabled/$nicCount NIC(s) with WOL enabled$bios"
+                $bios       = if ($Parsed.BIOS_WOL -and $Parsed.BIOS_WOL.Attempted) { " · BIOS: $(if ($Parsed.BIOS_WOL.Success) {'OK'} else {'Failed'})" } else { '' }
+                $changed    = if ($Parsed.Changes -and $Parsed.Changes.Count -gt 0) { " · $($Parsed.Changes.Count) change(s)" } else { ' · already configured' }
+                return "$wolEnabled/$nicCount NIC(s) with WoL$bios$changed"
             }
             '*Backup-TaskbarLayout*' {
                 if (-not $Parsed.Results) { return 'No profiles found' }
@@ -171,29 +168,6 @@ function Get-StepSummary { # Generates human-readable summary from step output
                 $active = if ($Parsed.ActiveSSID) { " · Connected: $($Parsed.ActiveSSID)" } else { '' }
                 return "$($Parsed.ExportedCount)/$($Parsed.ProfileCount) profile(s) exported$ent$active"
             }
-            '*Set-WakeOnLan*' {
-                $changes  = if ($Parsed.Changes) { $Parsed.Changes.Count } else { 0 }
-                $nicOk    = @($Parsed.NICs | Where-Object { $_.Success -eq $true }).Count
-                $nicTotal = if ($Parsed.NICs) { $Parsed.NICs.Count } else { 0 }
-                $bios     = if ($Parsed.BIOS_WOL -and $Parsed.BIOS_WOL.Attempted) { " · BIOS WOL: $(if ($Parsed.BIOS_WOL.Success) {'OK'} else {'Failed'})" } else { '' }
-                return "$changes change(s) made · $nicOk/$nicTotal NIC(s) configured$bios"
-            }
-            '*Install-DellCommandTools*' {
-                if ($Parsed.DellDevice -eq $false) { return "Non-Dell ($($Parsed.Vendor)) — tool install skipped" }
-                $dcu = if ($Parsed.DCU -and $Parsed.DCU.Version) { "DCU v$($Parsed.DCU.Version)" } else { 'DCU not installed' }
-                $dcc = if ($Parsed.DCC -and $Parsed.DCC.Version) { "DCC v$($Parsed.DCC.Version)" } else { 'DCC not installed' }
-                return "$dcu · $dcc"
-            }
-            '*Update-Bios*' {
-                if ($Parsed.IsDell -eq $false) { return "Non-Dell ($($Parsed.Vendor)) — BIOS update skipped" }
-                if ($Parsed.ExitMeaning) { return $Parsed.ExitMeaning }
-                return 'Completed'
-            }
-            '*Update-Drivers*' {
-                if ($Parsed.IsDell -eq $false) { return "Non-Dell ($($Parsed.Vendor)) — driver update skipped" }
-                if ($Parsed.ExitMeaning) { return $Parsed.ExitMeaning }
-                return 'Completed'
-            }
             '*Register-AutopilotDeviceCommunity*' {
                 if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')  { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth' }
                 if ($Parsed.UploadStatus -eq 'RegisteredUnverified')  { return 'Script exited 0 but CSV absent — verify in Intune' }
@@ -205,15 +179,6 @@ function Get-StepSummary { # Generates human-readable summary from step output
                 }
                 $errSnip = if ($Parsed.Error) { '— ' + $Parsed.Error.Substring(0, [Math]::Min(60, $Parsed.Error.Length)) } else { '' }
                 return "Upload: $($Parsed.UploadStatus) $errSnip".Trim()
-            }
-            '*Register-AutopilotDevice*' {
-                if ($Parsed.Success -eq $true) {
-                    $s = "Registered · Serial: $($Parsed.SerialNumber)"
-                    if ($Parsed.ModuleVersion) { $s += " · Module v$($Parsed.ModuleVersion)" }
-                    return $s
-                }
-                if ($Parsed.UploadStatus) { return "Upload: $($Parsed.UploadStatus) · Serial: $($Parsed.SerialNumber)" }
-                return 'Completed'
             }
             '*Get-PreWipeSummary*' {
                 if ($Parsed.WipeVerdict) { return "$($Parsed.WipeVerdict) · $($Parsed.BlockerCount) blocker(s) · $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" }
@@ -402,22 +367,33 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 }
                 return @{ Verdict = 'WARN'; Reason = 'Device health status unknown' }
             }
-            '*Test-BiosVersion*' {
-                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — BIOS version check not applicable' } }
-                if ($Parsed.Error) { return @{ Verdict = 'WARN'; Reason = "BIOS check error: $($Parsed.Error)" } }
-                if ($Parsed.UpdateAvailable -eq $true) { return @{ Verdict = 'WARN'; Reason = "BIOS update available: v$($Parsed.LatestAvailable) (current: v$($Parsed.CurrentVersion))" } }
-                return @{ Verdict = 'PASS'; Reason = "BIOS is current: v$($Parsed.CurrentVersion)" }
+            '*Invoke-BiosUpdate*' {
+                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — BIOS update not applicable' } }
+                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $false) { return @{ Verdict = 'PASS'; Reason = if ($Parsed.ExitMeaning) { $Parsed.ExitMeaning } else { 'BIOS is current' } } }
+                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $true)  { return @{ Verdict = 'WARN'; Reason = 'BIOS updated — reboot required before wiping' } }
+                if ($Parsed.Success -eq $false) { return @{ Verdict = 'FAIL'; Reason = "BIOS update failed: $(if ($Parsed.ExitMeaning) { $Parsed.ExitMeaning } else { $Parsed.Error })" } }
+                return @{ Verdict = 'WARN'; Reason = 'BIOS update status unknown' }
             }
-            '*Test-DriverStatus*' {
-                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — Dell DCU driver check not applicable' } }
-                if ($Parsed.ProblematicDrivers -gt 0) { return @{ Verdict = 'WARN'; Reason = "$($Parsed.ProblematicDrivers) driver(s) with issues — run Update-Drivers (step 26)" } }
-                if ($Parsed.DCUScan -and $Parsed.DCUScan.UpdateAvailable) { return @{ Verdict = 'WARN'; Reason = 'Driver updates available via Dell Command Update' } }
-                return @{ Verdict = 'PASS'; Reason = "All $($Parsed.TotalDrivers) driver(s) healthy" }
+            '*Invoke-DriverUpdate*' {
+                if ($Parsed.IsDell -eq $false) {
+                    if ($Parsed.ProblematicDrivers -gt 0) { return @{ Verdict = 'WARN'; Reason = "$($Parsed.ProblematicDrivers) driver(s) with issues" } }
+                    return @{ Verdict = 'PASS'; Reason = "Non-Dell — $($Parsed.TotalDrivers) driver(s) checked" }
+                }
+                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $false) {
+                    if ($Parsed.ProblematicDrivers -gt 0) { return @{ Verdict = 'WARN'; Reason = "$($Parsed.ProblematicDrivers) driver(s) with issues after update" } }
+                    return @{ Verdict = 'PASS'; Reason = if ($Parsed.ExitMeaning) { $Parsed.ExitMeaning } else { 'Drivers current' } }
+                }
+                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $true) { return @{ Verdict = 'WARN'; Reason = 'Drivers updated — reboot required before wiping' } }
+                if ($Parsed.Success -eq $false) { return @{ Verdict = 'FAIL'; Reason = "Driver update failed: $(if ($Parsed.ExitMeaning) { $Parsed.ExitMeaning } else { $Parsed.Error })" } }
+                return @{ Verdict = 'WARN'; Reason = 'Driver update status unknown' }
             }
-            '*Test-WakeOnLan*' {
-                if (-not $Parsed.NICs -or $Parsed.NICs.Count -eq 0) { return @{ Verdict = 'WARN'; Reason = 'No NICs found to check' } }
-                $notEnabled = @($Parsed.NICs | Where-Object { $_.WOLMagicPacket -ne 'Enabled' }).Count
-                if ($notEnabled -gt 0) { return @{ Verdict = 'WARN'; Reason = "$notEnabled NIC(s) without WOL — run Set-WakeOnLan (step 24)" } }
+            '*Enable-WakeOnLan*' {
+                if ($Parsed.Success -eq $false) { return @{ Verdict = 'FAIL'; Reason = 'WoL configuration failed on one or more NICs' } }
+                if (-not $Parsed.NICs -or $Parsed.NICs.Count -eq 0) { return @{ Verdict = 'WARN'; Reason = 'No NICs found to configure' } }
+                $nicFailed = @($Parsed.NICs | Where-Object { $_.Success -ne $true }).Count
+                $biosOk    = ($Parsed.IsDell -eq $false) -or (-not $Parsed.BIOS_WOL) -or (-not $Parsed.BIOS_WOL.Attempted) -or ($Parsed.BIOS_WOL.Success -eq $true)
+                if ($nicFailed -gt 0) { return @{ Verdict = 'WARN'; Reason = "WOL not set on $nicFailed NIC(s)" } }
+                if (-not $biosOk) { return @{ Verdict = 'WARN'; Reason = 'BIOS WOL not set — DCC may have failed. Cold boot may be needed.' } }
                 return @{ Verdict = 'PASS'; Reason = "WOL enabled on all $($Parsed.NICs.Count) NIC(s)" }
             }
             '*Backup-TaskbarLayout*' {
@@ -433,36 +409,6 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 if ($Parsed.ProfileCount -eq 0) { return @{ Verdict = 'PASS'; Reason = 'No WiFi profiles found' } }
                 return @{ Verdict = 'PASS'; Reason = "$($Parsed.ExportedCount)/$($Parsed.ProfileCount) profile(s) exported" }
             }
-            '*Set-WakeOnLan*' {
-                if (-not $Parsed.NICs -or $Parsed.NICs.Count -eq 0) { return @{ Verdict = 'WARN'; Reason = 'No NICs found to configure' } }
-                $nicFailed = @($Parsed.NICs | Where-Object { $_.Success -ne $true }).Count
-                $biosOk    = ($Parsed.IsDell -eq $false) -or (-not $Parsed.BIOS_WOL) -or ($Parsed.BIOS_WOL.Attempted -eq $false) -or ($Parsed.BIOS_WOL.Success -eq $true)
-                if ($nicFailed -gt 0) { return @{ Verdict = 'WARN'; Reason = "WOL configuration failed on $nicFailed NIC(s)" } }
-                if (-not $biosOk) { return @{ Verdict = 'WARN'; Reason = 'BIOS WOL not set — DCC failed. Cold boot may be needed.' } }
-                return @{ Verdict = 'PASS'; Reason = "WOL configured on $($Parsed.NICs.Count) NIC(s)" }
-            }
-            '*Install-DellCommandTools*' {
-                if ($Parsed.DellDevice -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — Dell tools not applicable' } }
-                $dcuOk = $Parsed.DCU -and $Parsed.DCU.Success -eq $true
-                $dccOk = $Parsed.DCC -and $Parsed.DCC.Success -eq $true
-                if ($dcuOk -and $dccOk) { return @{ Verdict = 'PASS'; Reason = "DCU v$($Parsed.DCU.Version) and DCC v$($Parsed.DCC.Version) ready" } }
-                if (-not $dcuOk) { return @{ Verdict = 'FAIL'; Reason = "Dell Command Update not installed or failed: $(if ($Parsed.DCU) { $Parsed.DCU.Error } else { 'not found' })" } }
-                return @{ Verdict = 'WARN'; Reason = "Dell Command Configure not installed or failed: $(if ($Parsed.DCC) { $Parsed.DCC.Error } else { 'not found' })" }
-            }
-            '*Update-Bios*' {
-                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — BIOS update not applicable' } }
-                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $false) { return @{ Verdict = 'PASS'; Reason = $Parsed.ExitMeaning } }
-                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $true) { return @{ Verdict = 'WARN'; Reason = 'BIOS updated — reboot required before wiping' } }
-                if ($Parsed.Success -eq $false) { return @{ Verdict = 'FAIL'; Reason = "BIOS update failed: $($Parsed.ExitMeaning)" } }
-                return @{ Verdict = 'WARN'; Reason = 'BIOS update status unknown' }
-            }
-            '*Update-Drivers*' {
-                if ($Parsed.IsDell -eq $false) { return @{ Verdict = 'PASS'; Reason = 'Non-Dell device — driver update not applicable' } }
-                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $false) { return @{ Verdict = 'PASS'; Reason = $Parsed.ExitMeaning } }
-                if ($Parsed.Success -eq $true -and $Parsed.RebootNeeded -eq $true) { return @{ Verdict = 'WARN'; Reason = 'Drivers updated — reboot required before wiping' } }
-                if ($Parsed.Success -eq $false) { return @{ Verdict = 'FAIL'; Reason = "Driver update failed: $($Parsed.ExitMeaning)" } }
-                return @{ Verdict = 'WARN'; Reason = 'Driver update status unknown' }
-            }
             '*Register-AutopilotDeviceCommunity*' {
                 if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')    { return @{ Verdict = 'WARN'; Reason = 'Requires interactive sign-in — run via [3] Run Single Step' } }
                 if ($Parsed.UploadStatus -eq 'RegisteredUnverified')    { return @{ Verdict = 'WARN'; Reason = 'Script exited 0 but CSV absent — verify registration in Intune' } }
@@ -470,12 +416,6 @@ function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
                 if ($Parsed.UploadStatus -eq 'ExecutionFailed')         { return @{ Verdict = 'FAIL'; Reason = "Community script execution failed: $($Parsed.Error)" } }
                 if ($Parsed.UploadStatus -eq 'Failed')                  { return @{ Verdict = 'FAIL'; Reason = if ($Parsed.Error) { $Parsed.Error } else { 'Community script reported failure' } } }
                 return @{ Verdict = 'FAIL'; Reason = 'OAuth registration did not complete successfully' }
-            }
-            '*Register-AutopilotDevice*' {
-                if ($Parsed.Success -eq $true) { return @{ Verdict = 'PASS'; Reason = "Device registered (upload: $($Parsed.UploadStatus))" } }
-                if ($Parsed.UploadStatus -eq 'UploadFailed')   { return @{ Verdict = 'FAIL'; Reason = "Autopilot upload failed: $($Parsed.Error)" } }
-                if ($Parsed.UploadStatus -eq 'HashCollected')  { return @{ Verdict = 'WARN'; Reason = 'Hash collected but not yet uploaded' } }
-                return @{ Verdict = 'FAIL'; Reason = 'Registration did not complete successfully' }
             }
             '*Get-PreWipeSummary*' {
                 if ($Parsed.WipeVerdict -match '^READY TO WIPE$')     { return @{ Verdict = 'PASS'; Reason = "READY TO WIPE · $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" } }
@@ -526,7 +466,12 @@ function Get-HtmlTable { # Extracts data table from step output
                 }
             }
             '*Get-InstalledApplications*' {
-                if ($Parsed.Applications) { $cols = @('DisplayName','DisplayVersion','Publisher','Scope'); $rows = @($Parsed.Applications) }
+                $cols = @('DisplayName','DisplayVersion','Publisher','Scope','InstallerType')
+                $combined = @()
+                if ($Parsed.NonStandardApps) { $combined += @($Parsed.NonStandardApps) }
+                if ($Parsed.StandardApps)    { $combined += @($Parsed.StandardApps) }
+                if ($combined.Count -eq 0 -and $Parsed.Applications) { $combined = @($Parsed.Applications) }
+                if ($combined.Count -gt 0) { $rows = $combined }
             }
             '*Get-StorageMode*' {
                 if ($Parsed.Disks) { $cols = @('Model','MediaType','InterfaceType'); $rows = @($Parsed.Disks) }
@@ -563,17 +508,6 @@ function Get-HtmlTable { # Extracts data table from step output
                     AuthMethod   = if ($Parsed.AuthMethod)      { $Parsed.AuthMethod }             else { '(community script)' }
                     UploadStatus = if ($Parsed.UploadStatus)    { $Parsed.UploadStatus }           else { '(unknown)' }
                     GraphModVer  = if ($Parsed.GraphModVersion) { "v$($Parsed.GraphModVersion)" }  else { '(unknown)' }
-                })
-            }
-            '*Register-AutopilotDevice*' {
-                $cols = @('Serial','ModuleVersion','Hash','UploadStatus','GroupTag','AssignedUser')
-                $rows = @([PSCustomObject]@{
-                    Serial        = if ($Parsed.SerialNumber)   { $Parsed.SerialNumber }   else { '' }
-                    ModuleVersion = if ($Parsed.ModuleVersion)  { "v$($Parsed.ModuleVersion)" } else { '' }
-                    Hash          = if ($Parsed.HardwareHash)   { $Parsed.HardwareHash }   else { '' }
-                    UploadStatus  = if ($Parsed.UploadStatus)   { $Parsed.UploadStatus }   else { '' }
-                    GroupTag      = if ($Parsed.GroupTag)        { $Parsed.GroupTag }        else { '' }
-                    AssignedUser  = if ($Parsed.AssignedUser)   { $Parsed.AssignedUser }   else { '' }
                 })
             }
             '*Get-WindowsProductKey*' {
@@ -637,19 +571,21 @@ function Get-HtmlTable { # Extracts data table from step output
                     })
                 }
             }
-            '*Test-BiosVersion*' {
-                $cols = @('Manufacturer','CurrentVersion','ReleaseDate','LatestAvailable','UpdateAvailable')
+            '*Invoke-BiosUpdate*' {
+                $cols = @('Vendor','CurrentVersion','UpdateFound','ScanExitCode','ApplyExitCode','RebootNeeded','Result')
                 $rows = @([PSCustomObject]@{
-                    Manufacturer    = if ($Parsed.Manufacturer)     { $Parsed.Manufacturer }     else { '' }
-                    CurrentVersion  = if ($Parsed.CurrentVersion)   { $Parsed.CurrentVersion }   else { '' }
-                    ReleaseDate     = if ($Parsed.ReleaseDate)       { $Parsed.ReleaseDate }       else { '' }
-                    LatestAvailable = if ($Parsed.LatestAvailable)   { $Parsed.LatestAvailable }   else { 'N/A' }
-                    UpdateAvailable = if ($Parsed.UpdateAvailable -eq $true) { 'YES' } elseif ($Parsed.UpdateAvailable -eq $false) { 'No' } else { 'Unknown' }
+                    Vendor         = if ($Parsed.Vendor)             { $Parsed.Vendor }             else { '' }
+                    CurrentVersion = if ($Parsed.CurrentVersion)     { $Parsed.CurrentVersion }     else { 'N/A' }
+                    UpdateFound    = if ($Parsed.UpdateFound -eq $true) { 'YES' } elseif ($Parsed.UpdateFound -eq $false) { 'No' } else { 'N/A' }
+                    ScanExitCode   = if ($null -ne $Parsed.ScanExitCode)  { $Parsed.ScanExitCode }  else { 'N/A' }
+                    ApplyExitCode  = if ($null -ne $Parsed.ApplyExitCode) { $Parsed.ApplyExitCode } else { 'N/A' }
+                    RebootNeeded   = if ($Parsed.RebootNeeded -eq $true) { 'YES' } else { 'No' }
+                    Result         = if ($Parsed.ExitMeaning)        { $Parsed.ExitMeaning }        else { 'N/A' }
                 })
             }
-            '*Test-DriverStatus*' {
+            '*Invoke-DriverUpdate*' {
                 $driverList = if ($Parsed.Drivers) { @($Parsed.Drivers | Where-Object { $_.HasIssue -eq $true }) } else { @() }
-                if ($driverList.Count -eq 0 -and $Parsed.Drivers) { $driverList = @($Parsed.Drivers | Select-Object -First 15) }
+                if ($driverList.Count -eq 0 -and $Parsed.Drivers) { $driverList = @($Parsed.Drivers | Select-Object -First 10) }
                 if ($driverList.Count -gt 0) {
                     $cols = @('DeviceName','Class','DriverVersion','HasIssue','IssueCode')
                     $rows = @($driverList | ForEach-Object {
@@ -663,15 +599,16 @@ function Get-HtmlTable { # Extracts data table from step output
                     })
                 }
             }
-            '*Test-WakeOnLan*' {
+            '*Enable-WakeOnLan*' {
                 if ($Parsed.NICs) {
-                    $cols = @('NIC','WOLMagicPacket','WakeOnPattern','PMWakeEnabled')
+                    $cols = @('NIC','WasEnabled','WOLMagicPacket','PMWakeEnabled','Success')
                     $rows = @($Parsed.NICs | ForEach-Object {
                         [PSCustomObject]@{
                             NIC            = $_.NICName
+                            WasEnabled     = if ($_.WasEnabled) { 'Yes' } else { 'No' }
                             WOLMagicPacket = $_.WOLMagicPacket
-                            WakeOnPattern  = $_.WakeOnPattern
                             PMWakeEnabled  = $_.PMWakeEnabled
+                            Success        = if ($_.Success) { 'Yes' } else { 'FAILED' }
                         }
                     })
                 }
@@ -703,46 +640,6 @@ function Get-HtmlTable { # Extracts data table from step output
                         }
                     })
                 }
-            }
-            '*Set-WakeOnLan*' {
-                if ($Parsed.NICs) {
-                    $cols = @('NIC','WOLMagicPacket','PMWakeEnabled','Success')
-                    $rows = @($Parsed.NICs | ForEach-Object {
-                        [PSCustomObject]@{
-                            NIC            = $_.NICName
-                            WOLMagicPacket = $_.WOLMagicPacket
-                            PMWakeEnabled  = $_.PMWakeEnabled
-                            Success        = if ($_.Success) { 'Yes' } else { 'FAILED' }
-                        }
-                    })
-                }
-            }
-            '*Install-DellCommandTools*' {
-                if ($Parsed.DellDevice -eq $true) {
-                    $cols = @('Tool','Version','Action','Success')
-                    $rows = @(
-                        [PSCustomObject]@{ Tool = 'Dell Command Update';    Version = if ($Parsed.DCU -and $Parsed.DCU.Version) { $Parsed.DCU.Version } else { 'N/A' }; Action = if ($Parsed.DCU) { $Parsed.DCU.Action } else { '' }; Success = if ($Parsed.DCU -and $Parsed.DCU.Success) { 'Yes' } else { 'No' } }
-                        [PSCustomObject]@{ Tool = 'Dell Command Configure'; Version = if ($Parsed.DCC -and $Parsed.DCC.Version) { $Parsed.DCC.Version } else { 'N/A' }; Action = if ($Parsed.DCC) { $Parsed.DCC.Action } else { '' }; Success = if ($Parsed.DCC -and $Parsed.DCC.Success) { 'Yes' } else { 'No' } }
-                    )
-                }
-            }
-            '*Update-Bios*' {
-                $cols = @('Vendor','ExitCode','Result','RebootNeeded')
-                $rows = @([PSCustomObject]@{
-                    Vendor       = if ($Parsed.Vendor)      { $Parsed.Vendor }      else { '' }
-                    ExitCode     = if ($null -ne $Parsed.ExitCode) { $Parsed.ExitCode } else { 'N/A' }
-                    Result       = if ($Parsed.ExitMeaning) { $Parsed.ExitMeaning } else { 'N/A' }
-                    RebootNeeded = if ($Parsed.RebootNeeded -eq $true) { 'YES' } else { 'No' }
-                })
-            }
-            '*Update-Drivers*' {
-                $cols = @('Vendor','ExitCode','Result','RebootNeeded')
-                $rows = @([PSCustomObject]@{
-                    Vendor       = if ($Parsed.Vendor)      { $Parsed.Vendor }      else { '' }
-                    ExitCode     = if ($null -ne $Parsed.ExitCode) { $Parsed.ExitCode } else { 'N/A' }
-                    Result       = if ($Parsed.ExitMeaning) { $Parsed.ExitMeaning } else { 'N/A' }
-                    RebootNeeded = if ($Parsed.RebootNeeded -eq $true) { 'YES' } else { 'No' }
-                })
             }
             '*Test-BitLockerEscrow*' {
                 if ($Parsed.Volumes) {

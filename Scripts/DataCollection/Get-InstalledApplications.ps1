@@ -61,6 +61,25 @@ function Test-IsNoise {
 }
 #endregion
 
+#region --- Standard App Patterns ---
+$StandardAppPatterns = @(
+    '*Microsoft Office*', '*Microsoft 365*', '*Microsoft OneDrive*',
+    '*.NET*', '*Visual C++*', '*Visual Studio*', '*Windows*',
+    '*Google Chrome*', '*Microsoft Edge*', '*Brave*', '*Mozilla Firefox*',
+    '*Dell*', '*SentinelOne*', '*Adobe Reader*', '*Adobe Acrobat Reader*',
+    '*Intel*Driver*', '*Realtek*', '*NVIDIA*', '*AMD*Driver*',
+    '*Windows SDK*', '*Teams*', '*Zoom*', '*Slack*', '*Webex*'
+)
+
+function Test-IsStandardApp {
+    param([string]$Name)
+    foreach ($pattern in $StandardAppPatterns) {
+        if ($Name -like $pattern) { return $true }
+    }
+    return $false
+}
+#endregion
+
 #region --- Machine-Wide Applications ---
 Write-Log "Enumerating machine-wide installed applications..."
 $MachineApps = @()
@@ -148,18 +167,25 @@ Write-Log "Found $($UserApps.Count) per-user applications."
 #endregion
 
 #region --- Combine and Sort ---
-$AllApps = @($MachineApps) + @($UserApps) | Sort-Object Publisher, DisplayName
-$TotalCount = $AllApps.Count
-Write-Log "Total applications: $TotalCount"
+$AllApps = @($MachineApps) + @($UserApps) | Sort-Object DisplayName -Unique
+
+$NonStandardApps = @($AllApps | Where-Object { -not (Test-IsStandardApp $_.DisplayName) } | Sort-Object Publisher, DisplayName)
+$StandardApps    = @($AllApps | Where-Object {      (Test-IsStandardApp $_.DisplayName) } | Sort-Object Publisher, DisplayName)
+$TotalCount      = $AllApps.Count
+Write-Log "Total: $TotalCount ($($NonStandardApps.Count) non-standard, $($StandardApps.Count) standard)"
 #endregion
 
 #region --- Output ---
 $Result = [PSCustomObject]@{
-    Timestamp       = (Get-Date -Format 'o')
-    TotalCount      = $TotalCount
-    MachineCount    = $MachineApps.Count
-    UserCount       = $UserApps.Count
-    Applications    = $AllApps
+    Timestamp        = (Get-Date -Format 'o')
+    TotalCount       = $TotalCount
+    MachineCount     = $MachineApps.Count
+    UserCount        = $UserApps.Count
+    NonStandardCount = $NonStandardApps.Count
+    StandardCount    = $StandardApps.Count
+    NonStandardApps  = $NonStandardApps
+    StandardApps     = $StandardApps
+    Applications     = $AllApps
 }
 
 $Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\InstalledApplications-Report.json" -Force
@@ -168,20 +194,32 @@ if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
 } else {
     Write-Host ""
-    Write-Host "=== Installed Applications Inventory ===" -ForegroundColor Cyan
-    Write-Host "Machine-wide: $($MachineApps.Count)"
-    Write-Host "Per-user:     $($UserApps.Count)"
-    Write-Host "Total:        $TotalCount"
+    Write-Host "=== Installed Applications ===" -ForegroundColor Cyan
+    Write-Host "  Total:        $TotalCount ($($NonStandardApps.Count) non-standard, $($StandardApps.Count) standard)"
     Write-Host ""
-
-    # Group by publisher for readable display
-    $ByPublisher = $AllApps | Group-Object Publisher | Sort-Object Name
-    foreach ($group in $ByPublisher) {
-        $pubName = if ($group.Name) { $group.Name } else { '(Unknown publisher)' }
-        Write-Host "  $pubName" -ForegroundColor Yellow
-        foreach ($app in ($group.Group | Sort-Object DisplayName)) {
-            $ver = if ($app.DisplayVersion) { " v$($app.DisplayVersion)" } else { '' }
-            Write-Host "    $($app.DisplayName)$ver [$($app.InstallerType)]"
+    if ($NonStandardApps.Count -gt 0) {
+        Write-Host "  --- Non-Standard Applications ($($NonStandardApps.Count)) ---" -ForegroundColor Yellow
+        $byPub = $NonStandardApps | Group-Object Publisher | Sort-Object Name
+        foreach ($group in $byPub) {
+            $pubName = if ($group.Name) { $group.Name } else { '(Unknown publisher)' }
+            Write-Host "  $pubName" -ForegroundColor Yellow
+            foreach ($app in ($group.Group | Sort-Object DisplayName)) {
+                $ver = if ($app.DisplayVersion) { " v$($app.DisplayVersion)" } else { '' }
+                Write-Host "    $($app.DisplayName)$ver [$($app.InstallerType)]"
+            }
+        }
+        Write-Host ""
+    }
+    if ($StandardApps.Count -gt 0) {
+        Write-Host "  --- Standard Applications ($($StandardApps.Count)) ---" -ForegroundColor DarkGray
+        $byPub = $StandardApps | Group-Object Publisher | Sort-Object Name
+        foreach ($group in $byPub) {
+            $pubName = if ($group.Name) { $group.Name } else { '(Unknown publisher)' }
+            Write-Host "  $pubName" -ForegroundColor DarkGray
+            foreach ($app in ($group.Group | Sort-Object DisplayName)) {
+                $ver = if ($app.DisplayVersion) { " v$($app.DisplayVersion)" } else { '' }
+                Write-Host "    $($app.DisplayName)$ver [$($app.InstallerType)]" -ForegroundColor DarkGray
+            }
         }
     }
     Write-Host ""

@@ -274,7 +274,7 @@ $csvPath = "$OutputRoot\AutopilotHash_Community.csv"
 # NOTE: -OutputFile is in the 'Default' parameter set; -Online activates the 'Online'
 # parameter set. Passing both triggers "positional parameter cannot be found" error.
 # With -Online the script uploads directly to Intune and does not write a local CSV.
-$communityArgs = @('-Online')
+$communityArgs = @('-Online', '-Assign')
 if ($GroupTag)               { $communityArgs += '-GroupTag';               $communityArgs += $GroupTag }
 if ($AssignedUser)           { $communityArgs += '-AssignedUser';           $communityArgs += $AssignedUser }
 if ($TenantId)               { $communityArgs += '-TenantId';               $communityArgs += $TenantId }

@@ -61,16 +61,19 @@ Write-Log "Dell device confirmed: $Manufacturer"
 
 #region --- Helper: Get installed version from registry ---
 function Get-InstalledVersion {
-    param([string]$DisplayNamePattern)
+    param([string]$DisplayNamePattern, [string[]]$AlternatePatterns = @())
     $regPaths = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
     )
+    $patterns = @($DisplayNamePattern) + $AlternatePatterns
     foreach ($path in $regPaths) {
-        $entry = Get-ItemProperty $path -ErrorAction SilentlyContinue |
-            Where-Object { $_.DisplayName -like $DisplayNamePattern } |
-            Select-Object -First 1
-        if ($entry) { return $entry.DisplayVersion }
+        foreach ($pat in $patterns) {
+            $entry = Get-ItemProperty $path -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -like $pat } |
+                Select-Object -First 1
+            if ($entry) { return $entry.DisplayVersion }
+        }
     }
     return $null
 }
@@ -134,16 +137,18 @@ try {
         }
 
         # Verify install
-        Start-Sleep -Seconds 5
-        $DCUVersion = Get-InstalledVersion -DisplayNamePattern '*Dell Command Update*'
-        if ($DCUVersion) {
-            Write-Log "DCU successfully installed: $DCUVersion"
+        Start-Sleep -Seconds 15
+        $DCUVersion = Get-InstalledVersion -DisplayNamePattern '*Dell Command Update*' -AlternatePatterns @('*Dell Command | Update*','*DellCommandUpdate*')
+        $DCUExeAfter = Find-DellCommandUpdate
+        if ($DCUVersion -or $DCUExeAfter) {
+            $ver = if ($DCUVersion) { $DCUVersion } else { 'installed (exe found, registry pending)' }
+            Write-Log "DCU successfully installed: $ver"
             $DCUResult.Installed = $true
-            $DCUResult.Version   = $DCUVersion
+            $DCUResult.Version   = $ver
             $DCUResult.Success   = $true
         } else {
             Write-ErrorLog "DCU installation could not be verified."
-            $DCUResult.Error = 'Install completed but version not found in registry'
+            $DCUResult.Error = 'Install completed but version not found in registry or filesystem'
         }
 
         # Cleanup
@@ -188,16 +193,18 @@ try {
             $DCCResult.Error = "Winget failed: $_"
         }
 
-        Start-Sleep -Seconds 5
-        $DCCVersion = Get-InstalledVersion -DisplayNamePattern '*Dell Command Configure*'
-        if ($DCCVersion) {
-            Write-Log "DCC successfully installed: $DCCVersion"
+        Start-Sleep -Seconds 15
+        $DCCVersion = Get-InstalledVersion -DisplayNamePattern '*Dell Command Configure*' -AlternatePatterns @('*Dell Command | Configure*','*DellCommandConfigure*')
+        $DCCExeAfter = Find-DellCommandConfigure
+        if ($DCCVersion -or $DCCExeAfter) {
+            $ver = if ($DCCVersion) { $DCCVersion } else { 'installed (exe found, registry pending)' }
+            Write-Log "DCC successfully installed: $ver"
             $DCCResult.Installed = $true
-            $DCCResult.Version   = $DCCVersion
+            $DCCResult.Version   = $ver
             $DCCResult.Success   = $true
         } else {
             Write-ErrorLog "DCC installation could not be verified."
-            $DCCResult.Error = 'Install completed but version not found in registry'
+            $DCCResult.Error = 'Install completed but version not found in registry or filesystem'
         }
     }
 } catch {
