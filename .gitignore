@@ -1,8 +1,8 @@
 # Mac
 .DS_Store
 
-# Claude / dev tooling
-.claude/
+# Claude / dev tooling (local-only files)
+.claude/settings.local.json
 CLAUDE.md
 .mcp.json
 
