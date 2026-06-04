@@ -35,7 +35,7 @@ This opens a numbered menu. Press a key to select:
 
 ```
 [1]  Quick Check       12 core steps — fast scan & backup essentials
-[2]  Full Prep         all 31 steps in sequence
+[2]  Full Prep         all 27 steps in sequence
 [3]  Run Single Step
 [4]  Custom Run        choose steps by number
 [5]  View Session Summary
@@ -72,7 +72,7 @@ Fast assessment — read-only checks and lightweight backups only. Covers the mo
 - Printer inventory
 - Autopilot profile assignment
 
-### Full Prep (31 steps)
+### Full Prep (27 steps)
 Runs all steps in sequence including Dell firmware/driver updates, WoL configuration, BitLocker escrow, Teams data, credential manager entries, Wi-Fi profiles, and Autopilot registration.
 
 ### Single Step / Custom Run
@@ -99,10 +99,16 @@ Select any step by number, or enter a comma-separated list (e.g. `1,3,11,12`) to
 | 11 | `Test-OneDriveKFM.ps1` | Confirms Known Folder Move is active for Desktop, Documents, Pictures |
 | 12 | `Test-OneDriveSyncStatus.ps1` | Verifies OneDrive sync is current and safe to wipe |
 | 13 | `Get-StorageMode.ps1` | Reports disk controller mode (AHCI / RAID / NVMe) |
-| 14 | `Test-BiosVersion.ps1` | Checks BIOS version against latest available (Dell) |
-| 15 | `Test-DriverStatus.ps1` | Flags outdated or missing drivers via Dell Command Update |
-| 16 | `Test-WakeOnLan.ps1` | Checks current Wake-on-LAN state |
 | 17 | `Test-WinRE.ps1` | Verifies Windows Recovery Environment is enabled |
+
+### Install & Update
+
+These steps check and apply updates via Dell Command Update. They live in `Scripts/ConfigurationChanges/`.
+
+| # | Script | Purpose |
+|---|--------|---------|
+| 14 | `Invoke-BiosUpdate.ps1` | Checks BIOS version and applies Dell DCU update if one is available (may reboot) |
+| 15 | `Invoke-DriverUpdate.ps1` | Checks driver status and applies available Dell DCU driver updates |
 
 ### Configuration Changes — Backups
 
@@ -120,16 +126,8 @@ These scripts write files to the output folder. They live in `Scripts/Configurat
 
 | # | Script | Purpose |
 |---|--------|---------|
+| 16 | `Enable-WakeOnLan.ps1` | Enables WoL via BIOS, NIC settings, and Windows power policy |
 | 23 | `Test-BitLockerEscrow.ps1` | Verifies and escrows BitLocker recovery key to Entra ID |
-| 24 | `Set-WakeOnLan.ps1` | Enables WoL via BIOS, NIC settings, and Windows power policy |
-
-### Configuration Changes — Install & Update
-
-| # | Script | Purpose |
-|---|--------|---------|
-| 25 | `Install-DellCommandTools.ps1` | Installs Dell Command Update and Dell Command Configure |
-| 26 | `Update-Drivers.ps1` | Applies driver updates via Dell Command Update |
-| 27 | `Update-Bios.ps1` | Applies BIOS update via Dell Command Update (may reboot) |
 
 ### Autopilot
 
@@ -137,8 +135,8 @@ These scripts write files to the output folder. They live in `Scripts/Configurat
 |---|--------|---------|
 | 28 | `Test-AutopilotReadiness.ps1` | Validates TPM, UEFI, Secure Boot, and Autopilot hardware requirements |
 | 29 | `Get-AutopilotAssignment.ps1` | Checks if device has an Autopilot profile assigned in Intune |
-| 30 | `Register-AutopilotDevice.ps1` | Captures hardware hash and registers device with Autopilot |
 | 31 | `Get-PreWipeSummary.ps1` | Produces final pre-wipe readiness summary |
+| 32 | `Register-AutopilotDeviceCommunity.ps1` | Captures hardware hash and registers device via OAuth (community module) |
 
 ---
 
@@ -201,9 +199,9 @@ Scripts/
 │   ├── Initialize-Toolkit.ps1     # Write-Log, Test-AdminElevation
 │   ├── Get-ActiveUserProfile.ps1  # Profile enumeration, hive mounting
 │   └── Find-DellCommandTool.ps1   # Dell tool discovery
-├── DataCollection/                # Read-only scans and backups
+├── DataCollection/                # Read-only scans and inventories
 ├── ConfigurationChecks/           # Read-only status checks
-├── ConfigurationChanges/          # Scripts that modify settings
+├── ConfigurationChanges/          # Scripts that modify settings or write backups
 └── AutopilotReadiness/            # Autopilot validation and registration
 ```
 
