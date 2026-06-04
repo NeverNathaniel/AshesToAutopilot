@@ -3,7 +3,6 @@
 
 # Claude / dev tooling (local-only files)
 .claude/settings.local.json
-CLAUDE.md
 .mcp.json
 
 # Reference material (not part of this project)
