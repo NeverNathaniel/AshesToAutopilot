@@ -237,3 +237,4 @@ if ($NonInteractive) {
 #endregion
 
 if ($OverallVerdict -eq 'NOT_SAFE') { exit 1 }
+exit 0

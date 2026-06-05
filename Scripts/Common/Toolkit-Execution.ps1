@@ -1,5 +1,13 @@
-# Toolkit-Execution.ps1 — Step execution functions for Start-PreWipeToolkit.ps1
-# Dot-sourced by the orchestrator. Do not run directly.
+<#
+.SYNOPSIS
+    Step execution engine for Start-PreWipeToolkit.ps1.
+
+.DESCRIPTION
+    Dot-sourced by the orchestrator at startup. Provides Invoke-RunSteps,
+    Invoke-StepCapture, and Invoke-StepInteractive. Runs each step as a child
+    process with -NonInteractive, captures JSON output, and evaluates verdicts
+    independently of exit code. Not intended to be run directly.
+#>
 
 function Invoke-StepCapture { # Executes step and captures output
     param([PSCustomObject]$Step) # Step object to execute

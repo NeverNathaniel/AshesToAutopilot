@@ -1,5 +1,13 @@
-# Toolkit-Report.ps1 — HTML report and session export functions for Start-PreWipeToolkit.ps1
-# Dot-sourced by the orchestrator. Do not run directly.
+<#
+.SYNOPSIS
+    HTML report and session export functions for Start-PreWipeToolkit.ps1.
+
+.DESCRIPTION
+    Dot-sourced by the orchestrator at startup. Provides Get-ActionInstruction,
+    Get-StepVerdict, Get-StepSummary, and Export-SessionReport. Generates the
+    HTML, JSON, and plain-text session reports written to C:\PreWipeOutput\.
+    Not intended to be run directly.
+#>
 
 function Get-ActionInstruction {
     param([string]$ScriptFile, [string]$VerdictReason)

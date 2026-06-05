@@ -1,5 +1,12 @@
-# Toolkit-UI.ps1 — Terminal display functions for Start-PreWipeToolkit.ps1
-# Dot-sourced by the orchestrator. Do not run directly.
+<#
+.SYNOPSIS
+    Terminal display functions for Start-PreWipeToolkit.ps1.
+
+.DESCRIPTION
+    Dot-sourced by the orchestrator at startup. Provides Write-Log, Write-ErrorLog,
+    Write-Banner, Show-MainMenu, Show-StepListTable, Show-SessionSummary, and
+    Read-MenuKey. Not intended to be run directly.
+#>
 
 function Write-Log { # Writes timestamped message to log file and console
     param([string]$Message, [string]$Level = 'INFO')
