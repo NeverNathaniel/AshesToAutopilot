@@ -341,3 +341,4 @@ if ($NonInteractive) {
 #endregion
 
 if ($OverallStatus -eq 'NOT READY') { exit 1 }
+exit 0
