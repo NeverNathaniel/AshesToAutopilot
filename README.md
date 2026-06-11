@@ -23,6 +23,27 @@ No execution policy changes required — the toolkit unblocks all scripts automa
 
 ---
 
+## Desktop App (Portable)
+
+The toolkit also ships as a portable Electron desktop app — a single `.exe`, no installation, no PowerShell console. It is the same toolkit: the app runs the exact same scripts in `Scripts\`, evaluates the same PASS/WARN/FAIL verdicts, reads/writes the same `C:\PreWipeOutput\session.json`, and generates the same HTML report. You can switch between the console orchestrator and the desktop app mid-session on the same device.
+
+**Use it:** download `AshesToAutopilot-Portable-<version>.exe` from the latest release (or build it, below) and double-click it. The app requests Administrator elevation automatically.
+
+- **Quick Check / Full Prep / Run Selected** mirror the console run modes; tick checkboxes for a custom run, or use the per-row **Run** button for a single step.
+- Live per-step status and verdict badges, with the verdict reason inline.
+- **Export Report** generates the HTML/JSON session report; **Open Output Folder** jumps to `C:\PreWipeOutput`.
+
+**Build the portable exe** (requires Node.js 18+, on Windows):
+
+```bash
+npm install
+npm run dist     # emits dist/AshesToAutopilot-Portable-<version>.exe
+```
+
+For development, `npm start` launches the app against the repo's `Scripts\` tree directly. On non-Windows machines the UI opens in preview mode (steps can't execute).
+
+---
+
 ## Quick Start
 
 Launch the interactive orchestrator from an elevated PowerShell prompt:

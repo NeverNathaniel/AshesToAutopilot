@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AshesToAutopilot is a Windows PowerShell toolkit for pre-wipe device preparation. A tech runs `Start-PreWipeToolkit.ps1` on a Windows device before reimaging it; the toolkit scans, backs up, configures, and validates Autopilot readiness. It runs on **Windows only** and requires **Administrator elevation**. There are no external module dependencies for the core toolkit.
 
+The repo also contains a **portable Electron desktop app** (`app/` + `package.json`) that fronts the same PowerShell scripts — see "Desktop App (Electron)" below.
+
 ## Linting
 
 PSScriptAnalyzer is the only linter. It is installed in the Claude Code web session environment automatically via `.claude/hooks/session-start.sh`.
@@ -40,7 +42,22 @@ Scripts run on Windows and require Admin elevation. They cannot execute in the L
 ```bash
 git archive --format=zip --output=AshesToAutopilot.zip HEAD
 # Attach AshesToAutopilot.zip to the GitHub release
+
+# Portable desktop app (run on Windows; requires Node.js 18+)
+npm install
+npm run dist   # emits dist/AshesToAutopilot-Portable-<version>.exe
 ```
+
+## Desktop App (Electron)
+
+`app/` contains an Electron host that replaces the console orchestrator UI while reusing the PowerShell engine:
+
+- `app/main.js` — main process. Spawns `powershell.exe` per step via `Scripts/Common/Invoke-ToolkitStep.ps1`, persists the same `C:\PreWipeOutput\session.json` schema as `Save-Session`, and generates the HTML report via `Scripts/Common/Export-ToolkitReport.ps1`. The console toolkit and the app are session-interoperable.
+- `app/steps.js` — JS mirror of `$script:Steps`, `$script:QuickCheckIndices`, and `$script:PhaseLabels` from `Start-PreWipeToolkit.ps1`. **Keep in sync when steps change.**
+- `app/preload.js` + `app/renderer/` — context-isolated IPC bridge and the UI (vanilla HTML/CSS/JS, no framework).
+- Host shims print a JSON result envelope between `===ATA_RESULT_BEGIN===` / `===ATA_RESULT_END===` sentinel lines; `extractEnvelope()` in `main.js` parses it.
+- electron-builder packages a Windows `portable` target with `requireAdministrator`; `Scripts/` and `Start-PreWipeToolkit.ps1` ship as `extraResources` under `resources/toolkit` so PowerShell can execute them from disk.
+- `npm start` runs the app in dev against the repo tree. On non-Windows it opens in UI preview mode (steps can't execute); a headless smoke test is available via `xvfb-run -a env ATA_SCREENSHOT=/tmp/ui.png npx electron --no-sandbox .`
 
 ---
 
@@ -97,6 +114,9 @@ Steps are numbered 1–32 with intentional gaps (indices 24–27 and 30 are abse
 | `Toolkit-UI.ps1` | ASCII banners, menu rendering, `Read-MenuKey`, `Show-StepListTable`, `Show-MainMenu`, `Show-SessionSummary` |
 | `Toolkit-Report.ps1` | HTML report generation, `Export-SessionReport`, JSON/TXT session export |
 | `Find-DellCommandTool.ps1` | Locates Dell Command Update and Dell Command Configure executables |
+| `Get-ToolkitHostInfo.ps1` | Desktop-app shim: device identity, elevation, primary profile as JSON |
+| `Invoke-ToolkitStep.ps1` | Desktop-app shim: standalone `Invoke-StepCapture` equivalent — runs one step, returns status/verdict/summary envelope |
+| `Export-ToolkitReport.ps1` | Desktop-app shim: rebuilds orchestrator state from a JSON payload and calls `Export-HtmlReport` |
 
 ### Script Organization by Phase
 

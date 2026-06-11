@@ -19,3 +19,7 @@ docs/superpowers/
 
 # Release artifacts (attach to GitHub releases, don't commit)
 *.zip
+
+# Electron desktop app
+node_modules/
+dist/
