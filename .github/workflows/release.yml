@@ -1,0 +1,43 @@
+name: Release
+
+# Automated release pipeline: builds the portable Windows exe and publishes it
+# as a GitHub Release asset. Triggered either by pushing a version tag
+# (e.g. v1.2.0) or manually from the Actions tab with a tag name.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create/publish (e.g. v1.2.0)'
+        required: true
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish portable exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable exe
+        run: npm run dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: dist/AshesToAutopilot-Portable-*.exe
+          fail_on_unmatched_files: true
+          generate_release_notes: true
