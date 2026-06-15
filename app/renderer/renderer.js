@@ -245,6 +245,7 @@ window.toolkit.onEvent((channel, data) => {
 // --- Init ---------------------------------------------------------------------
 
 (async function init() {
+  wireToolbar();
   state = await window.toolkit.init();
   renderDeviceInfo();
   renderSteps();
