@@ -1,10 +1,14 @@
 name: Release
 
-# Automated release pipeline: pushing a version tag (e.g. v1.2.0) builds the
-# portable Windows exe and publishes it as a GitHub Release asset.
-# Can also be run manually via the Actions tab against an existing tag.
+# Automated release pipeline: builds the portable Windows exe and publishes it
+# as a GitHub Release asset. Triggered either by pushing a version tag
+# (e.g. v1.2.0) or manually from the Actions tab with a tag name.
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create/publish (e.g. v1.2.0)'
+        required: true
   push:
     tags:
       - 'v*'
@@ -33,6 +37,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: dist/AshesToAutopilot-Portable-*.exe
           fail_on_unmatched_files: true
           generate_release_notes: true
