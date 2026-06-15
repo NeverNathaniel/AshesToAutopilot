@@ -1,6 +1,6 @@
 {
   "name": "ashes-to-autopilot",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "AshesToAutopilot — portable desktop app for pre-wipe device preparation and Autopilot readiness",
   "main": "app/main.js",
   "private": true,
