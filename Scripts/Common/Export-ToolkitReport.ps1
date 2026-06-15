@@ -25,6 +25,11 @@ param(
     [Parameter(Mandatory)][string]$InputFile
 )
 
+# The Electron host reads our stdout as UTF-8; match it so the envelope path
+# round-trips intact.
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
+
 $NonInteractive = $true # Suppress console echo from Write-Log
 $ScriptName = 'Export-ToolkitReport'
 . (Join-Path $PSScriptRoot 'Initialize-Toolkit.ps1')
@@ -33,7 +38,9 @@ $ErrorActionPreference = 'Continue' # Match orchestrator behavior for report gen
 
 Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 
-$payload = Get-Content -LiteralPath $InputFile -Raw | ConvertFrom-Json
+# Node writes the payload as UTF-8; Windows PowerShell's Get-Content defaults to
+# ANSI, so read it explicitly as UTF-8 or non-ASCII data would be mangled.
+$payload = Get-Content -LiteralPath $InputFile -Raw -Encoding UTF8 | ConvertFrom-Json
 
 $script:ToolkitRoot    = $ToolkitRoot
 $script:ComputerName   = $payload.ComputerName

@@ -28,6 +28,34 @@ param(
     [string]$PrimaryProfile
 )
 
+# The Electron host reads our stdout as UTF-8, but Windows PowerShell defaults
+# to the console's OEM code page. Any non-ASCII byte (paths, app names, the
+# toolkit's own em dashes/middots) would then corrupt the JSON and make the
+# host's JSON.parse fail — which surfaces as "Step host did not return a
+# result". Force UTF-8 (no BOM) so the result envelope round-trips intact.
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
+
+# Defined first so it is available even if later setup fails.
+function Write-ResultEnvelope {
+    param([hashtable]$Envelope)
+    Write-Output '===ATA_RESULT_BEGIN==='
+    $Envelope | ConvertTo-Json -Depth 12 -Compress
+    Write-Output '===ATA_RESULT_END==='
+}
+
+# Safety net: any terminating error (including while dot-sourcing the common
+# modules) still yields an envelope, so the host shows the real error instead
+# of an opaque "no result".
+trap {
+    Write-ResultEnvelope @{
+        Status = 'FAIL'; ExitCode = 1; Summary = "Host shim error: $_"
+        Verdict = 'FAIL'; VerdictReason = 'Step host crashed before producing a result'
+        ElapsedSeconds = $null; Parsed = $null
+    }
+    exit 0
+}
+
 $NonInteractive = $true # Suppress console echo from Write-Log
 $ScriptName = 'Invoke-ToolkitStep'
 . (Join-Path $PSScriptRoot 'Initialize-Toolkit.ps1')
@@ -40,13 +68,6 @@ $script:ToolkitRoot    = $ToolkitRoot
 $script:PrimaryProfile = if ($PrimaryProfile) { $PrimaryProfile } else { $null }
 
 . (Join-Path $PSScriptRoot 'Toolkit-Report.ps1') # Get-StepSummary / Get-StepVerdict
-
-function Write-ResultEnvelope {
-    param([hashtable]$Envelope)
-    Write-Output '===ATA_RESULT_BEGIN==='
-    $Envelope | ConvertTo-Json -Depth 12 -Compress
-    Write-Output '===ATA_RESULT_END==='
-}
 
 $fullPath = Join-Path $ToolkitRoot $ScriptPath
 
@@ -81,7 +102,7 @@ try {
 }
 $sw.Stop()
 
-$trimmed = $jsonRaw.Trim()
+$trimmed = if ($null -ne $jsonRaw) { $jsonRaw.Trim() } else { '' }
 if ($trimmed) {
     try {
         $parsed = $trimmed | ConvertFrom-Json
