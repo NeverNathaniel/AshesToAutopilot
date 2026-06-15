@@ -46,6 +46,7 @@
       "requestedExecutionLevel": "requireAdministrator"
     },
     "portable": {
+      "requestExecutionLevel": "admin",
       "artifactName": "AshesToAutopilot-Portable-${version}.exe"
     }
   }
