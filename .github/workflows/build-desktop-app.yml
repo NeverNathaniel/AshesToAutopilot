@@ -2,12 +2,18 @@ name: Build Desktop App
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'Scripts/**'
+      - 'Start-PreWipeToolkit.ps1'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-desktop-app.yml'
   push:
     branches:
       - main
       - 'claude/**'
-    tags:
-      - 'v*'
     paths:
       - 'app/**'
       - 'Scripts/**'
@@ -17,7 +23,7 @@ on:
       - '.github/workflows/build-desktop-app.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -43,10 +49,3 @@ jobs:
           name: AshesToAutopilot-Portable
           path: dist/AshesToAutopilot-Portable-*.exe
           if-no-files-found: error
-
-      # On version tags (v*), attach the exe to the GitHub release
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/AshesToAutopilot-Portable-*.exe
