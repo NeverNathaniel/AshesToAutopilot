@@ -31,11 +31,24 @@ header {
   background: var(--bg-alt);
 }
 
-.banner {
-  color: var(--cyan);
-  font-size: 9px;
-  line-height: 1.15;
+.brand {
   user-select: none;
+}
+
+.brand-title {
+  color: var(--cyan);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1.1;
+}
+
+.brand-subtitle {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
 }
 
 .device-info {
