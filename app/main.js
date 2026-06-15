@@ -49,8 +49,11 @@ function runPowerShellFile(scriptAbsPath, args, onSpawn) {
     );
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (d) => { stdout += d.toString(); });
-    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    // The shims emit UTF-8; decode explicitly to match.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (d) => { stdout += d; });
+    child.stderr.on('data', (d) => { stderr += d; });
     child.on('error', (err) => resolve({ code: -1, stdout, stderr: String(err) }));
     child.on('close', (code) => resolve({ code, stdout, stderr }));
     if (onSpawn) onSpawn(child);
@@ -172,7 +175,7 @@ async function runSingleStep(step, info) {
   return {
     Status: 'FAIL',
     ExitCode: res.code,
-    Summary: (res.stderr || 'Host shim produced no result').trim().slice(0, 200),
+    Summary: (res.stderr || res.stdout || 'Host shim produced no result').trim().slice(0, 300),
     Verdict: 'FAIL',
     VerdictReason: 'Step host did not return a result',
     ElapsedSeconds: null,

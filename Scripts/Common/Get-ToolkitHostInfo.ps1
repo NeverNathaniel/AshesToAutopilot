@@ -15,6 +15,11 @@
 [CmdletBinding()]
 param()
 
+# The Electron host reads our stdout as UTF-8; force it so non-ASCII serials
+# or profile names don't corrupt the JSON envelope.
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
+
 $ErrorActionPreference = 'SilentlyContinue'
 
 $computerName = $env:COMPUTERNAME
