@@ -246,23 +246,30 @@ window.toolkit.onEvent((channel, data) => {
 
 (async function init() {
   wireToolbar();
-  state = await window.toolkit.init();
-  renderDeviceInfo();
-  renderSteps();
-  renderCounts();
-  $('btn-full').textContent = `▶ Full Prep (${state.steps.length})`;
-  $('btn-quick').textContent = `▶ Quick Check (${state.quickCheckIndices.length})`;
-  if (!state.isWindows) {
-    $('platform-warning').hidden = false;
+  try {
+    state = await window.toolkit.init();
+    renderDeviceInfo();
+    renderSteps();
+    renderCounts();
+    $('btn-full').textContent = `▶ Full Prep (${state.steps.length})`;
+    $('btn-quick').textContent = `▶ Quick Check (${state.quickCheckIndices.length})`;
+    if (!state.isWindows) {
+      $('platform-warning').hidden = false;
+      setBusy(false);
+      setStatus('UI preview mode — run on Windows to execute steps.');
+    } else if (!state.hostInfo.IsElevated) {
+      $('elevation-warning').hidden = false;
+      setStatus('Warning: not elevated.');
+    } else if (state.sessionExists) {
+      setStatus(`Session resumed from ${state.sessionFile}`);
+    } else {
+      setStatus('Ready.');
+    }
     setBusy(false);
-    setStatus('UI preview mode — run on Windows to execute steps.');
-  } else if (!state.hostInfo.IsElevated) {
-    $('elevation-warning').hidden = false;
-    setStatus('Warning: not elevated.');
-  } else if (state.sessionExists) {
-    setStatus(`Session resumed from ${state.sessionFile}`);
-  } else {
-    setStatus('Ready.');
+  } catch (err) {
+    setStatus(`Initialization failed: ${err && err.message ? err.message : err}`);
+  } finally {
+    // Always dismiss the loading screen, even if init failed.
+    $('loading-overlay').hidden = true;
   }
-  setBusy(false);
 })();

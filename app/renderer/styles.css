@@ -51,6 +51,43 @@ header {
   text-transform: uppercase;
 }
 
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.loading-overlay[hidden] { display: none; } /* override the flex display above */
+
+.loading-box {
+  text-align: center;
+  user-select: none;
+}
+
+.loading-box .brand-title { font-size: 32px; }
+.loading-box .brand-subtitle { letter-spacing: 6px; }
+
+.spinner {
+  width: 34px;
+  height: 34px;
+  margin: 26px auto 16px;
+  border: 3px solid var(--border);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .device-info {
   margin-top: 10px;
   display: flex;
