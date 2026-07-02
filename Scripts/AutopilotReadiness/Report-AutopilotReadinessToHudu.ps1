@@ -166,8 +166,12 @@ function ConvertTo-HtmlTable {
         $InputObject,
         [string[]]$Headers
     )
-    process {
-        $rows = @($InputObject)
+    # Accumulate ALL pipeline input and emit ONE table in end{} — a process-block
+    # body runs once per piped object and produced N concatenated one-row tables.
+    begin { $collected = @() }
+    process { $collected += $InputObject }
+    end {
+        $rows = @($collected)
         if ($rows.Count -eq 0) { return '<p><em>No data</em></p>' }
 
         if (-not $Headers) {
@@ -337,7 +341,7 @@ if ($bitlockerReport) {
     $securityRows += [PSCustomObject]@{ Check = 'BitLocker Escrowed'; Status = if ($bitlockerReport.AllEscrowed) { 'PASS' } else { 'FAIL' } }
 }
 if ($oneDriveReport) {
-    $securityRows += [PSCustomObject]@{ Check = 'OneDrive Sync'; Status = if ($oneDriveReport.OverallVerdict -eq 'SAFE') { 'PASS' } else { $oneDriveReport.OverallVerdict } }
+    $securityRows += [PSCustomObject]@{ Check = 'OneDrive Sync'; Status = if ($oneDriveReport.OverallVerdict -eq 'SAFE_TO_WIPE') { 'PASS' } else { $oneDriveReport.OverallVerdict } }
 }
 if ($readinessReport) {
     $sb = $readinessReport.Checks.SecureBoot
@@ -355,17 +359,8 @@ $securityHtml = if ($securityRows.Count -gt 0) {
 #region --- Authenticate to Hudu ---
 Write-Log "Authenticating to Hudu ($HuduBaseUrl)..."
 
-# Install HuduAPI module if not present
-if (-not (Get-Module -ListAvailable -Name HuduAPI)) {
-    Write-Log "HuduAPI module not found — installing from PSGallery..."
-    try {
-        Install-Module -Name HuduAPI -Scope CurrentUser -Force -ErrorAction Stop
-        Write-Log "HuduAPI installed."
-    } catch {
-        Write-ErrorLog "Failed to install HuduAPI: $_"
-        exit 1
-    }
-}
+# HuduAPI presence is enforced by the module check at the top of the script
+# (manual install policy) — no auto-install here.
 Import-Module HuduAPI -ErrorAction Stop
 
 # Resolve API key
@@ -377,7 +372,9 @@ if (-not $HuduApiKey) {
     Write-Log "Retrieving Hudu API key from Key Vault '$KeyVaultName'..."
     try {
         if (-not (Get-Module -ListAvailable -Name Az.KeyVault)) {
-            Install-Module -Name Az.KeyVault -Scope CurrentUser -Force -ErrorAction Stop
+            # TLS 1.2 for PSGallery on WinPS 5.1 hosts whose SystemDefault excludes it
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Install-Module -Name Az.KeyVault -Scope CurrentUser -Force -MinimumVersion '4.0.0' -ErrorAction Stop
         }
         Import-Module Az.KeyVault -ErrorAction Stop
         $secret = Get-AzKeyVaultSecret -VaultName $KeyVaultName -Name $KeyVaultSecretName -AsPlainText -ErrorAction Stop
