@@ -52,50 +52,49 @@ foreach ($Profile in $Profiles) {
 
     Write-Log "Checking drive mappings for: $ProfileName"
 
-    $HiveLoaded = Mount-UserHive -UserProfile $Profile
+    $HiveLoaded = $false
+    try {
+        $HiveLoaded = Mount-UserHive -UserProfile $Profile
 
-    $Drives = @()
-    $NetworkKey = "Registry::HKEY_USERS\$SID\Network"
+        $NetworkKey = "Registry::HKEY_USERS\$SID\Network"
 
-    if (Test-Path $NetworkKey) {
-        $driveMappings = Get-ChildItem $NetworkKey -ErrorAction SilentlyContinue
-        foreach ($drive in $driveMappings) {
-            try {
-                $props      = Get-ItemProperty $drive.PSPath -ErrorAction SilentlyContinue
-                $letter     = $drive.PSChildName
-                $remotePath = $props.RemotePath
-                $persistent = if ($props.ConnectionType -eq 1) { $true } else { $false }
+        if (Test-Path $NetworkKey) {
+            $driveMappings = Get-ChildItem $NetworkKey -ErrorAction SilentlyContinue
+            foreach ($drive in $driveMappings) {
+                try {
+                    $props      = Get-ItemProperty $drive.PSPath -ErrorAction SilentlyContinue
+                    $letter     = $drive.PSChildName
+                    $remotePath = $props.RemotePath
+                    $persistent = if ($props.ConnectionType -eq 1) { $true } else { $false }
 
-                $Drives += [PSCustomObject]@{
-                    DriveLetter = "$letter`:"
-                    UNCPath     = $remotePath
-                    Persistent  = $persistent
-                    UserName    = $props.UserName
+                    # One flat record per mapping — the report/summary consumers count and
+                    # tabulate Results as per-mapping rows, not per-profile groups.
+                    $AllResults += [PSCustomObject]@{
+                        Profile     = $ProfileName
+                        DriveLetter = "$letter`:"
+                        UNCPath     = $remotePath
+                        Persistent  = $persistent
+                        UserName    = $props.UserName
+                    }
+                    Write-Log "  $letter`: -> $remotePath (Persistent: $persistent)"
+                } catch {
+                    Write-ErrorLog "Error reading drive $($drive.PSChildName) for $ProfileName : $_"
                 }
-                Write-Log "  $letter`: -> $remotePath (Persistent: $persistent)"
-            } catch {
-                Write-ErrorLog "Error reading drive $($drive.PSChildName) for $ProfileName : $_"
             }
+        } else {
+            Write-Log "  No Network drives key found for $ProfileName"
         }
-    } else {
-        Write-Log "  No Network drives key found for $ProfileName"
-    }
-
-    if ($HiveLoaded) { Dismount-UserHive -SID $SID }
-
-    $AllResults += [PSCustomObject]@{
-        Profile    = $ProfileName
-        SID        = $SID
-        DriveCount = $Drives.Count
-        Drives     = $Drives
+    } finally {
+        if ($HiveLoaded) { Dismount-UserHive -SID $SID }
     }
 }
 #endregion
 
 #region --- Output ---
 $Summary = [PSCustomObject]@{
-    Timestamp = (Get-Date -Format 'o')
-    Results   = $AllResults
+    Timestamp    = (Get-Date -Format 'o')
+    ProfileCount = $Profiles.Count
+    Results      = $AllResults
 }
 
 $Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Get-DriveMappings-Report.json" -Force
@@ -105,11 +104,9 @@ if ($NonInteractive) {
 } else {
     Write-Host ""
     Write-Host "=== Network Drive Mappings ===" -ForegroundColor Cyan
-    foreach ($r in $AllResults) {
-        Write-Host "  $($r.Profile): $($r.DriveCount) drive(s)"
-        foreach ($d in $r.Drives) {
-            Write-Host "    $($d.DriveLetter) -> $($d.UNCPath) [Persistent: $($d.Persistent)]"
-        }
+    Write-Host "  $($AllResults.Count) mapping(s) across $($Profiles.Count) profile(s)"
+    foreach ($d in $AllResults) {
+        Write-Host "    [$($d.Profile)] $($d.DriveLetter) -> $($d.UNCPath) [Persistent: $($d.Persistent)]"
     }
     Write-Host ""
     Write-Host "Report: $OutputRoot\Logs\Get-DriveMappings-Report.json"

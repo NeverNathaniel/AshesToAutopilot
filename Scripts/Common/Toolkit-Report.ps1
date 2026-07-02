@@ -369,9 +369,14 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
             '*Test-AutopilotReadiness*' {
                 if ($Parsed.OverallStatus -eq 'READY')     { return @{ Verdict = 'PASS'; Reason = 'Device meets Autopilot hardware requirements' } }
                 if ($Parsed.OverallStatus -eq 'NOT READY') { return @{ Verdict = 'FAIL'; Reason = 'Device does not meet Autopilot hardware requirements' } }
+                if ($Parsed.OverallStatus -eq 'READY WITH WARNINGS') {
+                    $w = if ($Parsed.Warnings) { @($Parsed.Warnings)[0] } else { 'review TPM readiness/vendor warnings' }
+                    return @{ Verdict = 'WARN'; Reason = "Ready with warnings: $w" }
+                }
                 return @{ Verdict = 'WARN'; Reason = 'Autopilot readiness status unknown' }
             }
             '*Get-AutopilotAssignment*' {
+                if ($Parsed.AutopilotDisabled -eq $true) { return @{ Verdict = 'WARN'; Reason = 'Autopilot is DISABLED on this device (IsAutoPilotDisabled=1) — enrollment will not fire' } }
                 if ($Parsed.ProfileDownloaded) { return @{ Verdict = 'PASS'; Reason = 'Autopilot profile downloaded locally' } }
                 return @{ Verdict = 'FAIL'; Reason = 'No Autopilot profile found on device' }
             }

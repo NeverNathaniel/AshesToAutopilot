@@ -37,6 +37,7 @@ if (-not (Test-AdminElevation)) { exit 1 }
 
 $Checks = @{}
 $Failures = @()
+$Warnings = @()
 
 #region --- TPM Check ---
 try {
@@ -81,8 +82,21 @@ try {
             $knownIssue = "Nuvoton TPMs have had AIK enrollment issues with Autopilot; verify firmware is current"
         }
 
+        # A present-but-not-ready TPM 2.0 passes version checks yet fails Autopilot
+        # attestation at OOBE — exactly what this pre-wipe check exists to catch.
+        # Known-problem vendors likewise surface as WARN, not a silent JSON field.
+        $tpmStatus = if ($majorVersion -ge 2) {
+            if ($tpm.TpmReady -ne $true) { 'WARN' }
+            elseif ($knownIssue)          { 'WARN' }
+            else                          { 'PASS' }
+        } else { 'FAIL' }
+        $tpmDetail = "SpecVersion $tpmVersion; manufacturer $idTagNorm ($manufacturerIdHex)"
+        if ($tpm.TpmReady -ne $true) { $tpmDetail += '; TPM NOT READY - initialize before Autopilot pre-provisioning' }
+        if ($knownIssue)             { $tpmDetail += "; $knownIssue" }
+
         $Checks['TPM'] = [PSCustomObject]@{
-            Status               = if ($majorVersion -ge 2) { 'PASS' } else { 'FAIL' }
+            Status               = $tpmStatus
+            Detail               = $tpmDetail
             Present              = $true
             Version              = $tpmVersion
             Ready                = $tpm.TpmReady
@@ -95,15 +109,16 @@ try {
         if ($majorVersion -lt 2) {
             $Failures += "TPM version $tpmVersion is below 2.0"
             Write-Log "TPM FAIL: version $tpmVersion (need 2.0+)" 'WARN'
+        } elseif ($tpmStatus -eq 'WARN') {
+            $Warnings += $tpmDetail
+            Write-Log "TPM WARN: $tpmDetail" 'WARN'
         } else {
             Write-Log "TPM PASS: version $tpmVersion"
-        }
-        if ($knownIssue) {
-            Write-Log "TPM KnownIssue: $knownIssue" 'WARN'
         }
     } else {
         $Checks['TPM'] = [PSCustomObject]@{
             Status               = 'FAIL'
+            Detail               = 'No TPM present'
             Present              = $false
             Version              = $null
             Ready                = $false
@@ -119,6 +134,7 @@ try {
 } catch {
     $Checks['TPM'] = [PSCustomObject]@{
         Status               = 'UNDETERMINED'
+        Detail               = "TPM query failed: $_"
         Present              = $null
         Version              = $null
         Ready                = $null
@@ -139,6 +155,7 @@ try {
     $secureBoot = Confirm-SecureBootUEFI
     $Checks['SecureBoot'] = [PSCustomObject]@{
         Status  = if ($secureBoot) { 'PASS' } else { 'FAIL' }
+        Detail  = if ($secureBoot) { 'Secure Boot enabled' } else { 'Secure Boot disabled' }
         Enabled = $secureBoot
     }
     if ($secureBoot) {
@@ -168,9 +185,9 @@ try {
         $cpuPass = $false
         $cpuReasons += "Not 64-bit ($($cpu.AddressWidth)-bit)"
     }
-    if ($cpu.MaxClockSpeed -le 1000) {
+    if ($cpu.MaxClockSpeed -lt 1000) { # 1 GHz or faster passes; exactly 1000 MHz is compliant
         $cpuPass = $false
-        $cpuReasons += "Clock speed $($cpu.MaxClockSpeed)MHz <= 1000MHz"
+        $cpuReasons += "Clock speed $($cpu.MaxClockSpeed)MHz < 1000MHz"
     }
     if ($cpu.NumberOfLogicalProcessors -lt 2) {
         $cpuPass = $false
@@ -179,6 +196,7 @@ try {
 
     $Checks['CPU'] = [PSCustomObject]@{
         Status           = if ($cpuPass) { 'PASS' } else { 'FAIL' }
+        Detail           = if ($cpuPass) { "$($cpu.Name) - $($cpu.MaxClockSpeed)MHz, $($cpu.NumberOfLogicalProcessors) logical cores" } else { $cpuReasons -join '; ' }
         Name             = $cpu.Name
         Manufacturer     = $cpu.Manufacturer
         AddressWidth     = $cpu.AddressWidth
@@ -208,6 +226,7 @@ try {
 
     $Checks['Memory'] = [PSCustomObject]@{
         Status     = if ($memPass) { 'PASS' } else { 'FAIL' }
+        Detail     = "$($memoryGB)GB installed (minimum $($MinMemoryGB)GB)"
         InstalledGB = $memoryGB
         RequiredGB  = $MinMemoryGB
     }
@@ -234,6 +253,7 @@ try {
 
     $Checks['Storage'] = [PSCustomObject]@{
         Status     = if ($diskPass) { 'PASS' } else { 'FAIL' }
+        Detail     = "$($diskGB)GB on $osDrive (minimum $($MinDiskGB)GB)"
         Drive      = $osDrive
         SizeGB     = $diskGB
         FreeGB     = [math]::Round($disk.FreeSpace / 1GB, 1)
@@ -259,6 +279,7 @@ try {
     $isUEFI = $fwType -eq 2
     $Checks['UEFI'] = [PSCustomObject]@{
         Status       = if ($isUEFI) { 'PASS' } else { 'FAIL' }
+        Detail       = if ($isUEFI) { 'UEFI firmware' } else { 'Legacy BIOS - UEFI required for Autopilot' }
         FirmwareType = if ($isUEFI) { 'UEFI' } else { 'Legacy BIOS' }
     }
     if ($isUEFI) {
@@ -279,6 +300,8 @@ if ($allStatuses -contains 'FAIL') {
     $OverallStatus = 'NOT READY'
 } elseif ($allStatuses -contains 'UNDETERMINED') {
     $OverallStatus = 'UNDETERMINED'
+} elseif ($allStatuses -contains 'WARN') {
+    $OverallStatus = 'READY WITH WARNINGS'
 } else {
     $OverallStatus = 'READY'
 }
@@ -290,6 +313,7 @@ $Result = [PSCustomObject]@{
     Timestamp     = (Get-Date -Format 'o')
     OverallStatus = $OverallStatus
     Failures      = $Failures
+    Warnings      = $Warnings
     Checks        = $Checks
 }
 

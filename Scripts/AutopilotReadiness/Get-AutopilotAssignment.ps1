@@ -51,6 +51,7 @@ $Result = [PSCustomObject]@{
     SerialNumber          = $null
     ProfileDownloaded     = $false
     ForcedEnrollment      = $false
+    AutopilotDisabled     = $false
     TenantDomain          = $null
     TenantId              = $null
     AzureADJoined         = $false
@@ -83,10 +84,8 @@ try {
         $regData = Get-ItemProperty -Path $regPath -ErrorAction Stop
 
         if ($regData.CloudAssignedForcedEnrollment -eq 1) {
-            $Result.ProfileDownloaded = $true
-            $Result.ForcedEnrollment  = $true
-            $Result.ProfileSource     = 'Registry'
-            Write-Log "Autopilot profile found in registry (forced enrollment enabled)"
+            $Result.ForcedEnrollment = $true
+            Write-Log "Forced enrollment enabled"
         }
 
         if ($regData.CloudAssignedTenantDomain) {
@@ -110,7 +109,20 @@ try {
         if ($regData.IsAutoPilotDisabled -eq 0 -or $null -eq $regData.IsAutoPilotDisabled) {
             Write-Log "Autopilot is NOT disabled"
         } elseif ($regData.IsAutoPilotDisabled -eq 1) {
+            # Must live in the JSON, not just the log — in NonInteractive mode this is
+            # the one signal that enrollment will not fire despite a present profile.
+            $Result.AutopilotDisabled = $true
             Write-Log "WARNING: IsAutoPilotDisabled = 1" 'WARN'
+        }
+
+        # A populated profile (tenant domain / OOBE config / correlation id) means the
+        # profile IS present. ForcedEnrollment is a separate policy flag, not the
+        # presence signal — keying presence on it alone failed devices that had
+        # demonstrably downloaded a profile.
+        if ($Result.TenantDomain -or $Result.OobeConfig -or $Result.CorrelationId -or $Result.ForcedEnrollment) {
+            $Result.ProfileDownloaded = $true
+            $Result.ProfileSource     = 'Registry'
+            Write-Log "Autopilot profile found in registry"
         }
     } else {
         Write-Log "Autopilot registry path not found: $regPath" 'WARN'
@@ -177,7 +189,10 @@ try {
 #region --- Check 3: dsregcmd for Azure AD join status ---
 Write-Log "Checking Azure AD join status via dsregcmd..."
 try {
-    $dsregOutput = & dsregcmd /status 2>&1 | Out-String
+    # 2>$null (not 2>&1): with ErrorActionPreference=Stop, redirecting native stderr
+    # into the pipeline turns the first stderr line into a terminating error on
+    # WinPS 5.1, discarding the entire dsregcmd output.
+    $dsregOutput = & dsregcmd /status 2>$null | Out-String
 
     if ($dsregOutput -match 'AzureAdJoined\s*:\s*YES') {
         $Result.AzureADJoined = $true
