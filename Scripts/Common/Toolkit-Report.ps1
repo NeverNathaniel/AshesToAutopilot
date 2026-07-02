@@ -274,6 +274,8 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
             }
             '*Get-DownloadsSize*' {
                 if (-not $Parsed.Results) { return @{ Verdict = 'PASS'; Reason = 'No profiles with Downloads' } }
+                $skipped = @($Parsed.Results | Where-Object { $_.CopySkippedReason })
+                if ($skipped.Count -gt 0) { return @{ Verdict = 'WARN'; Reason = $skipped[0].CopySkippedReason } }
                 $anyFail = $false
                 foreach ($r in $Parsed.Results) { if ($r.CopySuccess -eq $false) { $anyFail = $true } }
                 if ($anyFail) { return @{ Verdict = 'FAIL'; Reason = 'Auto-copy failed for one or more profiles' } }

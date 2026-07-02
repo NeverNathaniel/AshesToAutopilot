@@ -73,16 +73,17 @@ foreach ($Profile in $Profiles) {
         CopySuccess   = $null
         CopiedFiles   = 0
         SkippedFiles  = 0
+        CopySkippedReason = $null
         Error         = $null
     }
 
     try {
-        if (Test-Path $DownloadsDir) {
+        if (Test-Path -LiteralPath $DownloadsDir) {
             $ProfileResult.FolderExists = $true
             Write-Log "Calculating size of $DownloadsDir ..."
-            $items = Get-ChildItem -Path $DownloadsDir -Recurse -Force -ErrorAction SilentlyContinue
+            $items = Get-ChildItem -LiteralPath $DownloadsDir -Recurse -Force -ErrorAction SilentlyContinue
             $size  = ($items | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum).Sum
-            $ProfileResult.SizeBytes = [long](if ($null -ne $size) { $size } else { 0 })
+            $ProfileResult.SizeBytes = [long]$(if ($null -ne $size) { $size } else { 0 })
             $ProfileResult.SizeHuman = Format-Bytes $ProfileResult.SizeBytes
             $ProfileResult.FileCount = ($items | Where-Object { -not $_.PSIsContainer }).Count
             Write-Log "$ProfileName Downloads: $($ProfileResult.SizeHuman) ($($ProfileResult.FileCount) files)"
@@ -105,8 +106,17 @@ if ($NonInteractive) {
         $r.CopyRequested = $true
         $r.CopyDest      = $destPath
 
+        # Cap the auto-copy: doubling a huge Downloads folder can fill the disk mid-prep.
+        $maxAutoCopyBytes = 20GB
+        if ($r.SizeBytes -gt $maxAutoCopyBytes) {
+            $r.CopySuccess       = $false
+            $r.CopySkippedReason = "Downloads is $($r.SizeHuman) (> 20 GB auto-copy cap) — back up manually before wipe"
+            Write-Log $r.CopySkippedReason 'WARN'
+            continue
+        }
+
         try {
-            $srcFiles = Get-ChildItem -Path $r.DownloadsPath -Recurse -Force -ErrorAction SilentlyContinue |
+            $srcFiles = Get-ChildItem -LiteralPath $r.DownloadsPath -Recurse -Force -ErrorAction SilentlyContinue |
                 Where-Object { -not $_.PSIsContainer }
 
             if ($srcFiles.Count -eq 0) {
@@ -116,7 +126,7 @@ if ($NonInteractive) {
                 continue
             }
 
-            if (-not (Test-Path $destPath)) {
+            if (-not (Test-Path -LiteralPath $destPath)) {
                 New-Item -Path $destPath -ItemType Directory -Force | Out-Null
             }
 
@@ -127,20 +137,20 @@ if ($NonInteractive) {
                 $destFile     = Join-Path $destPath $relativePath
                 $destDir      = Split-Path $destFile -Parent
 
-                if (-not (Test-Path $destDir)) {
+                if (-not (Test-Path -LiteralPath $destDir)) {
                     New-Item -Path $destDir -ItemType Directory -Force | Out-Null
                 }
 
                 # Incremental: skip if dest file exists with same size
-                if (Test-Path $destFile) {
-                    $existingSize = (Get-Item $destFile -Force).Length
+                if (Test-Path -LiteralPath $destFile) {
+                    $existingSize = (Get-Item -LiteralPath $destFile -Force).Length
                     if ($existingSize -eq $srcFile.Length) {
                         $skippedCount++
                         continue
                     }
                 }
 
-                Copy-Item -Path $srcFile.FullName -Destination $destFile -Force -ErrorAction Stop
+                Copy-Item -LiteralPath $srcFile.FullName -Destination $destFile -Force -ErrorAction Stop
                 $copiedCount++
             }
 
