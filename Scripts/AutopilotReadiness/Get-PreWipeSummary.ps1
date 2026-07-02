@@ -163,6 +163,8 @@ if ($blEntry -and $blEntry.Found) {
     try { $blJson = Get-Content (Join-Path $LogDir 'Test-BitLockerEscrow-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
     if ($null -eq $blJson -or $blJson.AllEscrowed -ne $true) {
         $Blockers += "BitLocker escrow is unverified or failed - resolve before wipe"
+    } elseif ($blJson.KeysCapturedLocally -eq $true) {
+        $Warnings += 'BitLocker recovery key(s) captured to C:\PreWipeOutput\BitLockerRecoveryKeys - move to secure storage before wipe'
     }
 } elseif (-not $blEntry -or -not $blEntry.Found) {
     $Blockers += "BitLocker escrow check has not been run"

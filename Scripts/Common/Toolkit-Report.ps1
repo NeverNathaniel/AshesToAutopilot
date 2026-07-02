@@ -112,7 +112,8 @@ function Get-StepSummary { # Generates human-readable summary from step output
             }
             '*Test-BitLockerEscrow*' {
                 if ($null -eq $Parsed.AllEscrowed) { return 'Completed' }
-                if ($Parsed.AllEscrowed) { return 'All drives escrowed to Entra ID' }
+                if ($Parsed.AllEscrowed -and $Parsed.KeysCapturedLocally) { return 'Key(s) captured locally — secure before wipe' }
+                if ($Parsed.AllEscrowed) { return 'All recovery keys escrowed' }
                 return 'Escrow failed on one or more drives'
             }
             '*Test-WinRE*' {
@@ -357,7 +358,10 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 return @{ Verdict = 'PASS'; Reason = "$($Parsed.Results.Count) mapping(s) documented ($persistent persistent)" }
             }
             '*Test-BitLockerEscrow*' {
-                if ($Parsed.AllEscrowed -eq $true)  { return @{ Verdict = 'PASS'; Reason = 'All drives escrowed to Entra ID' } }
+                if ($Parsed.AllEscrowed -eq $true) {
+                    if ($Parsed.KeysCapturedLocally -eq $true) { return @{ Verdict = 'WARN'; Reason = 'Recovery key saved to C:\PreWipeOutput\BitLockerRecoveryKeys — move to secure storage before wiping' } }
+                    return @{ Verdict = 'PASS'; Reason = 'All recovery keys escrowed' }
+                }
                 if ($Parsed.AllEscrowed -eq $false) { return @{ Verdict = 'FAIL'; Reason = 'Escrow failed — BitLocker key not backed up' } }
                 return @{ Verdict = 'WARN'; Reason = 'Escrow status unknown' }
             }

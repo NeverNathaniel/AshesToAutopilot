@@ -47,6 +47,10 @@ Assert 'SKIP is WARN' ($v.Verdict -eq 'WARN' -and $v.Reason -eq 'Step was skippe
 # --- BitLocker escrow ---------------------------------------------------------
 $v = Get-StepVerdict -Parsed ([PSCustomObject]@{ AllEscrowed = $false }) -ScriptFile 'Test-BitLockerEscrow.ps1' -Status 'FAIL'
 Assert 'escrow failure is blocking FAIL' ($v.Verdict -eq 'FAIL')
+$v = Get-StepVerdict -Parsed ([PSCustomObject]@{ AllEscrowed = $true; KeysCapturedLocally = $true }) -ScriptFile 'Test-BitLockerEscrow.ps1' -Status 'DONE'
+Assert 'locally captured key is WARN not PASS' ($v.Verdict -eq 'WARN')
+$v = Get-StepVerdict -Parsed ([PSCustomObject]@{ AllEscrowed = $true; KeysCapturedLocally = $false }) -ScriptFile 'Test-BitLockerEscrow.ps1' -Status 'DONE'
+Assert 'directory-escrowed keys are PASS' ($v.Verdict -eq 'PASS')
 
 # --- Downloads ---------------------------------------------------------------
 $p = [PSCustomObject]@{ Results = @([PSCustomObject]@{ CopySuccess = $false; CopySkippedReason = 'Downloads is 25 GB (over cap)' }) }
