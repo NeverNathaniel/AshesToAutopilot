@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reports the size of each active user's Downloads folder and optionally copies it.
 

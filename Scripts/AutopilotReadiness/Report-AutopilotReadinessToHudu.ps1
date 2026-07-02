@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Self-reports Autopilot readiness status to a Hudu asset record.
 

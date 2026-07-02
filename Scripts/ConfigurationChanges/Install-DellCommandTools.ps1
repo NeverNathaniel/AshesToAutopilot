@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Installs or updates Dell Command Update (DCU) and Dell Command Configure (DCC) on Dell hardware.
 

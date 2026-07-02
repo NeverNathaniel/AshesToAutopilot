@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Checks Wake-on-LAN settings and enables WoL on all NICs that need it.
 

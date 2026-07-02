@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Terminal display functions for Start-PreWipeToolkit.ps1.
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Unified interactive orchestrator for the Pre-Wipe Toolkit.
 

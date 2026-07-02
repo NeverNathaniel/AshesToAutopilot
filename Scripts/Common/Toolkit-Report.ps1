@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     HTML report and session export functions for Start-PreWipeToolkit.ps1.
 

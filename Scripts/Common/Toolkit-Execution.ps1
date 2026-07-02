@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Step execution engine for Start-PreWipeToolkit.ps1.
 

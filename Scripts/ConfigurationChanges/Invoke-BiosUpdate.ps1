@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Checks for and applies BIOS updates on Dell devices using Dell Command Update.
 

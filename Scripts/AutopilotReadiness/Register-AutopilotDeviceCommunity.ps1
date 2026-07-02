@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Registers this device with Windows Autopilot using the Andrew Taylor community
     edition of get-windowsautopilotinfocommunity.ps1 with OAuth authentication.

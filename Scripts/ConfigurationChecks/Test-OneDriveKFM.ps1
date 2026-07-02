@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reports OneDrive Known Folder Move (KFM) status and sync health for all active user profiles.
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Aggregates all pre-wipe script outputs into a single readiness report with go/no-go verdict.
 
