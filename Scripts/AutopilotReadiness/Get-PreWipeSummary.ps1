@@ -74,6 +74,7 @@ $ScriptMap = [ordered]@{
 Write-Log "Scanning $LogDir for script output files..."
 $ScriptResults = @()
 $Blockers      = @()
+$Warnings      = @()
 
 foreach ($fileName in $ScriptMap.Keys) {
     $info     = $ScriptMap[$fileName]
@@ -116,9 +117,28 @@ foreach ($fileName in $ScriptMap.Keys) {
                 if ($null -ne $val) { $val = $val.$part }
             }
             $entry.StatusValue = $val
-
-            # Determine pass/fail based on the value
             $entry.Status = 'DONE'
+
+            # Evaluate the extracted value for scripts the dedicated blocker section
+            # below does not re-parse — a failed registration or update must not
+            # silently count as DONE toward READY TO WIPE.
+            switch ($info.Script) {
+                'Register-AutopilotDeviceCommunity' {
+                    if ($val -ne $true) { $Blockers += 'Autopilot registration did not succeed - verify the device in Intune before wiping' }
+                }
+                'Invoke-BiosUpdate' {
+                    if ($val -eq $false) { $Warnings += 'BIOS update reported failure - review before wipe' }
+                }
+                'Invoke-DriverUpdate' {
+                    if ($val -eq $false) { $Warnings += 'Driver update reported failure - review before wipe' }
+                }
+                'Enable-WakeOnLan' {
+                    if ($val -eq $false) { $Warnings += 'Wake-on-LAN configuration failed - device may not be remotely wakeable' }
+                }
+                'Install-DellCommandTools' {
+                    if ($val -eq $false) { $Warnings += 'Dell Command tools install failed - BIOS/driver update steps degraded' }
+                }
+            }
 
         } catch {
             $entry.Status = 'ERROR'
@@ -135,41 +155,46 @@ foreach ($fileName in $ScriptMap.Keys) {
 #region --- Blocker Detection ---
 Write-Log "Checking for wipe blockers..."
 
-# Critical: BitLocker must be escrowed
+# Critical: BitLocker must be escrowed. Fail closed — the safe state must be PROVEN
+# ($true), so corrupt JSON or a null AllEscrowed is a blocker, not a pass.
 $blEntry = $ScriptResults | Where-Object { $_.Script -eq 'Test-BitLockerEscrow' }
 if ($blEntry -and $blEntry.Found) {
-    $blJson = Get-Content (Join-Path $LogDir 'BitLockerEscrow-Report.json') -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
-    if ($blJson -and $blJson.AllEscrowed -eq $false) {
-        $Blockers += "BitLocker recovery keys NOT escrowed to Entra ID"
+    $blJson = $null
+    try { $blJson = Get-Content (Join-Path $LogDir 'BitLockerEscrow-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
+    if ($null -eq $blJson -or $blJson.AllEscrowed -ne $true) {
+        $Blockers += "BitLocker escrow is unverified or failed - resolve before wipe"
     }
 } elseif (-not $blEntry -or -not $blEntry.Found) {
     $Blockers += "BitLocker escrow check has not been run"
 }
 
-# Critical: OneDrive sync must be complete
+# Critical: OneDrive sync must be complete. Fail closed on unparseable output.
 $syncEntry = $ScriptResults | Where-Object { $_.Script -eq 'Test-OneDriveSyncStatus' }
 if ($syncEntry -and $syncEntry.Found) {
-    $syncJson = Get-Content (Join-Path $LogDir 'OneDriveSyncStatus-Report.json') -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
-    if ($syncJson) {
-        if ($syncJson.OverallVerdict -eq 'NO_PROFILES') {
-            $Blockers += "OneDrive sync could not be verified — no active profiles found"
-        } elseif ($syncJson.Profiles) {
-            $unsafeProfiles = @($syncJson.Profiles | Where-Object { -not $_.SafeToWipe })
-            if ($unsafeProfiles.Count -gt 0) {
-                $names = ($unsafeProfiles | ForEach-Object { $_.Profile }) -join ', '
-                $Blockers += "OneDrive sync is NOT complete for: $names"
-            }
-        }
+    $syncJson = $null
+    try { $syncJson = Get-Content (Join-Path $LogDir 'OneDriveSyncStatus-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
+    if ($null -eq $syncJson) {
+        $Blockers += "OneDrive sync report could not be parsed - re-run the sync check"
+    } elseif ($syncJson.OverallVerdict -eq 'NO_PROFILES') {
+        $Blockers += "OneDrive sync could not be verified — no active profiles found"
+    } elseif ($syncJson.OverallVerdict -ne 'SAFE_TO_WIPE') {
+        $unsafeProfiles = @($syncJson.Profiles | Where-Object { -not $_.SafeToWipe })
+        $names = ($unsafeProfiles | ForEach-Object { $_.Profile }) -join ', '
+        if (-not $names) { $names = 'unknown profiles' }
+        $Blockers += "OneDrive sync is NOT complete for: $names"
     }
 } elseif (-not $syncEntry -or -not $syncEntry.Found) {
     $Blockers += "OneDrive sync status has not been checked"
 }
 
-# Critical: Autopilot readiness
+# Critical: Autopilot readiness. Fail closed on unparseable output.
 $readyEntry = $ScriptResults | Where-Object { $_.Script -eq 'Test-AutopilotReadiness' }
 if ($readyEntry -and $readyEntry.Found) {
-    $readyJson = Get-Content (Join-Path $LogDir 'AutopilotReadiness-Report.json') -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
-    if ($readyJson -and $readyJson.OverallStatus -eq 'NOT READY') {
+    $readyJson = $null
+    try { $readyJson = Get-Content (Join-Path $LogDir 'AutopilotReadiness-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
+    if ($null -eq $readyJson) {
+        $Blockers += "Autopilot readiness report could not be parsed - re-run the readiness check"
+    } elseif ($readyJson.OverallStatus -eq 'NOT READY') {
         $failList = ($readyJson.Failures | ForEach-Object { $_ }) -join '; '
         $Blockers += "Device NOT ready for Autopilot: $failList"
     }
@@ -232,9 +257,11 @@ if ($Blockers.Count -gt 0) {
     $WipeVerdict = 'READY TO WIPE'
 }
 
-$hasStaleBlockers = @($ScriptResults | Where-Object { $_.Stale -and $_.Status -ne 'NOT_RUN' }).Count -gt 0
-if ($hasStaleBlockers) {
-    $WipeVerdict = "$WipeVerdict (WARNING: some results are over 24h old — re-run affected steps)"
+# Keep WipeVerdict machine-readable (consumers match it exactly); staleness is its own field.
+$StaleWarning = $null
+$hasStaleResults = @($ScriptResults | Where-Object { $_.Stale -and $_.Status -ne 'NOT_RUN' }).Count -gt 0
+if ($hasStaleResults) {
+    $StaleWarning = 'Some results are over 24h old — re-run affected steps'
 }
 
 Write-Log "Wipe verdict: $WipeVerdict ($RanScripts/$TotalScripts scripts completed)"
@@ -244,10 +271,13 @@ Write-Log "Wipe verdict: $WipeVerdict ($RanScripts/$TotalScripts scripts complet
 $Result = [PSCustomObject]@{
     Timestamp     = (Get-Date -Format 'o')
     WipeVerdict   = $WipeVerdict
+    StaleWarning  = $StaleWarning
     ScriptsRan    = $RanScripts
     ScriptsTotal  = $TotalScripts
     BlockerCount  = $Blockers.Count
     Blockers      = $Blockers
+    WarningCount  = $Warnings.Count
+    Warnings      = $Warnings
     PhaseSummary  = $PhaseSummary
     ScriptDetails = $ScriptResults
 }
@@ -269,6 +299,7 @@ if ($NonInteractive) {
         default       { 'Yellow' }
     }
     Write-Host "VERDICT: $WipeVerdict" -ForegroundColor $verdictColor
+    if ($StaleWarning) { Write-Host "WARNING: $StaleWarning" -ForegroundColor Yellow }
     Write-Host "Scripts completed: $RanScripts / $TotalScripts" -ForegroundColor White
     Write-Host ""
 
@@ -318,10 +349,21 @@ if ($NonInteractive) {
         }
     }
 
+    # Warnings (non-blocking)
+    if ($Warnings.Count -gt 0) {
+        Write-Host ""
+        Write-Host "--- WARNINGS ---" -ForegroundColor Yellow
+        foreach ($w in $Warnings) {
+            Write-Host "  ! $w" -ForegroundColor Yellow
+        }
+    }
+
     Write-Host ""
     Write-Host "Full report: $LogDir\PreWipeSummary-Report.json"
     Write-Host ""
 }
 #endregion
 
+# NOT READY is a blocking state per the toolkit I/O contract.
+if ($WipeVerdict -like 'NOT READY*') { exit 1 }
 exit 0

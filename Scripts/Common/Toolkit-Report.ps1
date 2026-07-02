@@ -447,8 +447,11 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 return @{ Verdict = 'FAIL'; Reason = 'OAuth registration did not complete successfully' }
             }
             '*Get-PreWipeSummary*' {
-                if ($Parsed.WipeVerdict -match '^READY TO WIPE$')     { return @{ Verdict = 'PASS'; Reason = "READY TO WIPE · $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" } }
                 if ($Parsed.WipeVerdict -match 'NOT READY')            { return @{ Verdict = 'FAIL'; Reason = "$($Parsed.BlockerCount) blocker(s): $(($Parsed.Blockers | Select-Object -First 2) -join '; ')" } }
+                if ($Parsed.WipeVerdict -match '^READY TO WIPE$') {
+                    if ($Parsed.StaleWarning) { return @{ Verdict = 'WARN'; Reason = "READY, but $($Parsed.StaleWarning)" } }
+                    return @{ Verdict = 'PASS'; Reason = "READY TO WIPE · $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" }
+                }
                 if ($Parsed.WipeVerdict -match 'INCOMPLETE')           { return @{ Verdict = 'WARN'; Reason = "Incomplete — $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" } }
                 return @{ Verdict = 'WARN'; Reason = 'Summary status unknown' }
             }
