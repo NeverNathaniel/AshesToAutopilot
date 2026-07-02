@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reports all mapped network drives for each active user profile.
 

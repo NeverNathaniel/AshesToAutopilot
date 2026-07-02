@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Verifies device meets Windows 11 and Autopilot hardware requirements.
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Shared initialization for AshesToAutopilot scripts.
 .DESCRIPTION

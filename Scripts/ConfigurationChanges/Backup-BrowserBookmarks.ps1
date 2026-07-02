@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Backs up browser bookmarks for Chrome, Edge, Brave, and Firefox across all active user profiles.
 
@@ -167,6 +167,14 @@ function Backup-FirefoxBrowser {
             try {
                 if (-not (Test-Path $dest)) { New-Item -Path $dest -ItemType Directory -Force | Out-Null }
                 Copy-Item -Path $placesFile -Destination "$dest\places.sqlite" -Force -ErrorAction Stop
+                # If Firefox is open, recent bookmarks live in the WAL sidecar files —
+                # copying places.sqlite alone silently produces a stale backup.
+                foreach ($sidecar in @('places.sqlite-wal', 'places.sqlite-shm')) {
+                    $scPath = Join-Path $pDir.FullName $sidecar
+                    if (Test-Path $scPath) {
+                        Copy-Item -Path $scPath -Destination (Join-Path $dest $sidecar) -Force -ErrorAction SilentlyContinue
+                    }
+                }
                 $bResult.BackedUp   = $true
                 $bResult.BackupPath = "$dest\places.sqlite"
                 Write-Log "  Backed up: Firefox/$($pDir.Name)"

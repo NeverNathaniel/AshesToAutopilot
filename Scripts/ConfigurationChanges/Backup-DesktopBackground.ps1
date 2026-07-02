@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Backs up custom desktop wallpaper images for all active user profiles.
 
@@ -77,6 +77,8 @@ foreach ($Profile in $Profiles) {
         Error        = $null
     }
 
+    $HiveLoaded = $false # Reset per iteration: a Mount-UserHive throw must not leave
+                         # the previous profile's $true driving this finally block
     try {
         # Load user hive
         $HiveLoaded = Mount-UserHive -UserProfile $Profile

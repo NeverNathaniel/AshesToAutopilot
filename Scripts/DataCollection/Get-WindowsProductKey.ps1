@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Extracts the Windows OEM product key and activation status before wipe.
 

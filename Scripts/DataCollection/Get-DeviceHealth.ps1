@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Assesses hardware health (battery, disk, uptime) to determine if device is worth redeploying.
 

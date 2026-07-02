@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Scans user profiles for data not inside OneDrive-synced folders.
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Backs up Outlook email signatures for all active user profiles.
 
@@ -82,7 +82,10 @@ foreach ($Profile in $Profiles) {
                 $Result.Error = $_.ToString()
             }
         } else {
-            Write-Log "Signatures folder exists but is empty for $ProfileName" 'WARN'
+            # Office creates the Signatures folder on install even when the user never
+            # made a signature — an empty folder is nothing-to-back-up, not a failure.
+            $Result.Success = $true
+            Write-Log "Signatures folder exists but is empty for $ProfileName - nothing to back up"
         }
     } else {
         Write-Log "No Signatures folder found for $ProfileName"

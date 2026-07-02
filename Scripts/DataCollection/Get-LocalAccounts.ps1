@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Inventories local user accounts that survive an Autopilot Reset.
 

@@ -302,7 +302,9 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                     foreach ($b in $userResult.Browsers) {
                         $anyBrowserFound = $true
                         $isEdge = ($b.Browser -match 'Edge')
-                        if ($isEdge -and $b.SyncStatus -match 'Sync') { $edgeSynced = $true }
+                        # The script emits 'Enabled (email)' for synced browsers — no value it
+                        # emits ever contains the substring 'Sync'
+                        if ($isEdge -and $b.SyncStatus -like 'Enabled*') { $edgeSynced = $true }
                         if (-not $b.BackedUp) {
                             $allBackedUp = $false
                             if ($isEdge) { $edgeBackedUp = $false }
@@ -315,8 +317,8 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                     if (-not $userResult.Browsers) { continue }
                     $userHasBackup = $false; $userHasSync = $false
                     foreach ($b in $userResult.Browsers) {
-                        if ($b.BackedUp)                  { $userHasBackup = $true }
-                        if ($b.SyncStatus -match 'Sync')  { $userHasSync   = $true }
+                        if ($b.BackedUp)                      { $userHasBackup = $true }
+                        if ($b.SyncStatus -like 'Enabled*')   { $userHasSync   = $true }
                     }
                     if (-not $userHasBackup -and -not $userHasSync) { $noProtection = $true }
                 }
@@ -443,6 +445,8 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
             '*Backup-WiFiProfiles*' {
                 if ($Parsed.WlanService -eq 'NotInstalled') { return @{ Verdict = 'PASS'; Reason = 'No WLAN adapter — desktop without WiFi' } }
                 if ($Parsed.WlanService -ne 'Running') { return @{ Verdict = 'WARN'; Reason = "WLAN service is '$($Parsed.WlanService)' — WiFi profiles may not be exported" } }
+                if ($Parsed.ProfileCount -gt 0 -and $Parsed.ExportedCount -eq 0) { return @{ Verdict = 'FAIL'; Reason = "0/$($Parsed.ProfileCount) WiFi profile(s) exported — backup failed" } }
+                if ($Parsed.FailedCount -gt 0) { return @{ Verdict = 'WARN'; Reason = "$($Parsed.FailedCount) WiFi profile(s) failed to export — review before wiping" } }
                 if ($Parsed.SecurityWarning) { return @{ Verdict = 'WARN'; Reason = 'PSK passwords in exported XML — secure C:\PreWipeOutput\WiFiProfiles\ before wiping' } }
                 if ($Parsed.ProfileCount -eq 0) { return @{ Verdict = 'PASS'; Reason = 'No WiFi profiles found' } }
                 return @{ Verdict = 'PASS'; Reason = "$($Parsed.ExportedCount)/$($Parsed.ProfileCount) profile(s) exported" }

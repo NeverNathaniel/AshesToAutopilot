@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Exports a comprehensive inventory of all installed applications for reinstallation planning.
 

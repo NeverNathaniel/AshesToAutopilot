@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Inventories Microsoft Teams local data that may be lost at wipe.
 

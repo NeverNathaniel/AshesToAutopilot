@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Backs up taskbar layout and pinned app data for all active user profiles.
 
@@ -71,11 +71,13 @@ foreach ($Profile in $Profiles) {
         WindowsVersion = if ($IsWin11) { 'Win11' } else { 'Win10' }
         BackupDest    = $Dest
         FilesBackedUp = @()
+        FailedCopies  = @()
         RegExported   = $false
         Success       = $false
         Error         = $null
     }
 
+    $HiveLoaded = $false
     try {
         if (-not (Test-Path $Dest)) { New-Item -Path $Dest -ItemType Directory -Force | Out-Null }
 
@@ -98,9 +100,14 @@ foreach ($Profile in $Profiles) {
             if (Test-Path $pinnedPath) {
                 $pinnedDest = Join-Path $Dest 'PinnedItems'
                 if (-not (Test-Path $pinnedDest)) { New-Item $pinnedDest -ItemType Directory -Force | Out-Null }
-                Copy-Item -Path "$pinnedPath\*" -Destination $pinnedDest -Recurse -Force -ErrorAction SilentlyContinue
-                $Result.FilesBackedUp += $pinnedDest
-                Write-Log "  Copied pinned taskbar items"
+                try {
+                    Copy-Item -Path "$pinnedPath\*" -Destination $pinnedDest -Recurse -Force -ErrorAction Stop
+                    $Result.FilesBackedUp += $pinnedDest
+                    Write-Log "  Copied pinned taskbar items"
+                } catch {
+                    $Result.FailedCopies += $pinnedPath
+                    Write-Log "  Failed to copy pinned items: $_" 'WARN'
+                }
             }
         } else {
             # Win11: taskbar pinned items
@@ -112,20 +119,32 @@ foreach ($Profile in $Profiles) {
                 if (Test-Path $wp) {
                     $wDest = Join-Path $Dest "Win11_$(Split-Path $wp -Leaf)"
                     if (-not (Test-Path $wDest)) { New-Item $wDest -ItemType Directory -Force | Out-Null }
+                    $copiedAny = $false
                     Get-ChildItem $wp -File -ErrorAction SilentlyContinue | ForEach-Object {
-                        Copy-Item $_.FullName -Destination $wDest -Force -ErrorAction SilentlyContinue
+                        try {
+                            Copy-Item -LiteralPath $_.FullName -Destination $wDest -Force -ErrorAction Stop
+                            $copiedAny = $true
+                        } catch {
+                            $Result.FailedCopies += $_.FullName
+                            Write-Log "  Failed to copy $($_.FullName): $_" 'WARN'
+                        }
                     }
-                    $Result.FilesBackedUp += $wDest
+                    if ($copiedAny) { $Result.FilesBackedUp += $wDest }
                 }
             }
         }
 
-        # Copy common files
+        # Copy common files — verified: a silently failed copy must not count as backed up
         foreach ($f in $filesToCopy) {
             if (Test-Path $f) {
-                Copy-Item -Path $f -Destination $Dest -Force -ErrorAction SilentlyContinue
-                $Result.FilesBackedUp += $f
-                Write-Log "  Copied: $f"
+                try {
+                    Copy-Item -LiteralPath $f -Destination $Dest -Force -ErrorAction Stop
+                    $Result.FilesBackedUp += $f
+                    Write-Log "  Copied: $f"
+                } catch {
+                    $Result.FailedCopies += $f
+                    Write-Log "  Failed to copy $f : $_" 'WARN'
+                }
             }
         }
 
@@ -142,12 +161,16 @@ foreach ($Profile in $Profiles) {
             }
         }
 
-        if ($HiveLoaded) { Dismount-UserHive -SID $SID }
-
-        $Result.Success = $true
+        # Success means everything we found was actually copied
+        $Result.Success = ($Result.FailedCopies.Count -eq 0)
+        if (-not $Result.Success) {
+            $Result.Error = "$($Result.FailedCopies.Count) file(s) failed to copy"
+        }
     } catch {
         Write-ErrorLog "Backup failed for $ProfileName : $_"
         $Result.Error = $_.ToString()
+    } finally {
+        if ($HiveLoaded) { Dismount-UserHive -SID $SID }
     }
 
     $Results += $Result

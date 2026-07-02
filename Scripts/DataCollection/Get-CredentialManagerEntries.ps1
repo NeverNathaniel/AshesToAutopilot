@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Inventories Windows Credential Manager entries for the invoking user.
 

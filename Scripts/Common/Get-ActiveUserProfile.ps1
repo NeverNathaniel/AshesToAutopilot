@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Returns active, non-system Windows user profiles and helpers for hive load/unload.
 .DESCRIPTION

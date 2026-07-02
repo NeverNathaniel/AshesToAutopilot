@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reports Windows Recovery Environment (WinRE) status.
 

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Locates Dell Command Update (dcu-cli.exe) and Dell Command Configure (cctk.exe).
 .DESCRIPTION

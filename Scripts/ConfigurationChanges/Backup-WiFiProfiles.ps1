@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Exports all saved WiFi profiles with passwords for restoration on the new device.
 
@@ -90,9 +90,18 @@ foreach ($ssid in $profileNames) {
     }
 
     try {
-        # Export XML with cleartext key
-        $exportResult = netsh wlan export profile name="$ssid" folder="$WiFiDir" key=clear 2>&1
-        $exportedFile = Get-ChildItem -Path $WiFiDir -Filter "*$($ssid -replace '[\\/:*?\"<>|]', '_')*" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        # Export XML with cleartext key. Success is judged by netsh's exit code plus a
+        # file created by THIS export — the old wildcard SSID match could claim another
+        # profile's file (Office vs 'Office 5G') or a leftover from a previous run.
+        $exportStart  = Get-Date
+        $exportOutput = netsh wlan export profile name="$ssid" folder="$WiFiDir" key=clear 2>&1
+        $exportOk     = ($LASTEXITCODE -eq 0)
+        $exportedFile = $null
+        if ($exportOk) {
+            $exportedFile = Get-ChildItem -Path $WiFiDir -Filter '*.xml' -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -ge $exportStart } |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        }
 
         if ($exportedFile) {
             $profileInfo.Exported = $true
@@ -102,14 +111,12 @@ foreach ($ssid in $profileNames) {
             # Parse XML for auth details
             try {
                 [xml]$xml = Get-Content $exportedFile.FullName -ErrorAction Stop
-                $ns = @{ w = 'http://www.microsoft.com/networking/WLAN/profile/v1' }
                 $authNode = $xml.WLANProfile.MSM.security.authEncryption
                 if ($authNode) {
                     $profileInfo.Authentication = $authNode.authentication
                     $profileInfo.Encryption     = $authNode.encryption
 
                     # Enterprise profiles need re-auth
-                    $enterpriseAuths = @('WPA2-Enterprise', 'WPA-Enterprise', 'WPA3-Enterprise')
                     if ($profileInfo.Authentication -in @('WPA2Enterprise', 'WPAEnterprise', 'WPA3Enterprise') -or
                         $profileInfo.Authentication -match 'Enterprise') {
                         $profileInfo.NeedsReauth = $true
@@ -123,8 +130,9 @@ foreach ($ssid in $profileNames) {
                 Write-Log "  Could not parse XML: $_" 'WARN'
             }
         } else {
-            $profileInfo.Error = "Export command ran but no file found"
-            Write-Log "  Export failed: no output file" 'WARN'
+            $profileInfo.Error = if (-not $exportOk) { "netsh export failed: $(($exportOutput | Out-String).Trim())" }
+                                 else { 'Export command ran but produced no new file' }
+            Write-Log "  Export failed for '$ssid': $($profileInfo.Error)" 'WARN'
         }
     } catch {
         $profileInfo.Error = $_.ToString()
@@ -167,6 +175,7 @@ $Result = [PSCustomObject]@{
     ActiveSSID      = $ActiveSSID
     ProfileCount    = $ProfileResults.Count
     ExportedCount   = $ExportedCount
+    FailedCount     = @($ProfileResults | Where-Object { -not $_.Exported }).Count
     EnterpriseCount = ($ProfileResults | Where-Object { $_.NeedsReauth }).Count
     ExportPath      = $WiFiDir
     Profiles        = $ProfileResults

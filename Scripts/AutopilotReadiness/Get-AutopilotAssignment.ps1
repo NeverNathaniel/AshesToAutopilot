@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Checks for a locally downloaded Autopilot deployment profile and reports assignment details.
 
