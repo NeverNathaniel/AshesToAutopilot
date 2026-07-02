@@ -764,10 +764,31 @@ function Export-HtmlReport { # Generates styled HTML report from results
     $failV = @($ResultSet | Where-Object { $_.Verdict -eq 'FAIL' })
     $warnV = @($ResultSet | Where-Object { $_.Verdict -eq 'WARN' })
 
-    $readinessClass = if ($failV.Count -eq 0 -and $warnV.Count -eq 0) { 'ready' } elseif ($failV.Count -eq 0) { 'warnings' } else { 'not-ready' }
-    $readinessText  = if ($failV.Count -eq 0 -and $warnV.Count -eq 0) { '&#10003; Ready to Wipe' } `
-                      elseif ($failV.Count -eq 0) { "&#9888; Ready to Wipe &mdash; $($warnV.Count) warning(s)" } `
-                      else { "&#10007; Not Ready &mdash; $($failV.Count) issue(s) to resolve" }
+    # The headline is a device-level go/no-go: prior-session verdicts for steps NOT
+    # in this run must count too, or a single passing step after a failed session
+    # would banner 'Ready to Wipe'.
+    $currentIdx = @{}
+    foreach ($r in $ResultSet) { $currentIdx["$($r.Index)"] = $true }
+    $priorFail = 0; $priorWarn = 0
+    if ($script:Session -and $script:Session.Steps) {
+        foreach ($step in $script:Steps) {
+            $k = "$($step.Index)"
+            if (-not $currentIdx[$k] -and $script:Session.Steps.ContainsKey($k)) {
+                switch ($script:Session.Steps[$k].Verdict) {
+                    'FAIL' { $priorFail++ }
+                    'WARN' { $priorWarn++ }
+                }
+            }
+        }
+    }
+    $totalFail = $failV.Count + $priorFail
+    $totalWarn = $warnV.Count + $priorWarn
+    $priorNote = if (($priorFail + $priorWarn) -gt 0) { " (incl. $($priorFail + $priorWarn) from a previous session)" } else { '' }
+
+    $readinessClass = if ($totalFail -eq 0 -and $totalWarn -eq 0) { 'ready' } elseif ($totalFail -eq 0) { 'warnings' } else { 'not-ready' }
+    $readinessText  = if ($totalFail -eq 0 -and $totalWarn -eq 0) { '&#10003; Ready to Wipe' } `
+                      elseif ($totalFail -eq 0) { "&#9888; Ready to Wipe &mdash; $totalWarn warning(s)$priorNote" } `
+                      else { "&#10007; Not Ready &mdash; $totalFail issue(s) to resolve$priorNote" }
 
     $sb = [System.Text.StringBuilder]::new()
     $null = $sb.AppendLine(@'
@@ -865,8 +886,10 @@ function Export-HtmlReport { # Generates styled HTML report from results
         $null = $sb.AppendLine("</div>")
     }
 
-    $issueCount = @($ResultSet | Where-Object { $_.Verdict -eq 'FAIL' -or $_.Verdict -eq 'WARN' }).Count
-    $warnCount  = @($ResultSet | Where-Object { $_.Verdict -eq 'WARN' }).Count
+    # Counts must match what the JS filter actually reveals — it matches data-verdict
+    # on prior-session cards too, so include them.
+    $issueCount = $totalFail + $totalWarn
+    $warnCount  = $totalWarn
     $phaseKeys  = @($script:Steps | Select-Object -ExpandProperty Phase -Unique)
 
     $null = $sb.AppendLine("<div class='filter-bar'>")
@@ -882,15 +905,23 @@ function Export-HtmlReport { # Generates styled HTML report from results
     $null = $sb.AppendLine("</div>")
     $null = $sb.AppendLine("</div>")
 
-    $lastPhase   = ''
     $resultIndex = @{}
     foreach ($r in $ResultSet) { $resultIndex["$($r.Index)"] = $r }
 
-    foreach ($step in $script:Steps) {
-        if ($step.Phase -ne $lastPhase) {
-            $lastPhase = $step.Phase
-            $pl = Get-PhaseLabel $lastPhase
-            $null = $sb.AppendLine("<div class='phase-header' id='phase-$($lastPhase.ToLower())'>&#8212; $([System.Web.HttpUtility]::HtmlEncode($pl))</div>")
+    # Group steps by phase so each phase header (and its anchor id) is emitted exactly
+    # once — steps are not contiguous by phase in index order, and duplicate ids made
+    # the phase-jump links unable to reach the later occurrences.
+    $orderedSteps = @()
+    foreach ($pk in $phaseKeys) {
+        $orderedSteps += [PSCustomObject]@{ PhaseStart = $pk }
+        $orderedSteps += @($script:Steps | Where-Object { $_.Phase -eq $pk })
+    }
+
+    foreach ($step in $orderedSteps) {
+        if ($step.PSObject.Properties['PhaseStart']) {
+            $pl = Get-PhaseLabel $step.PhaseStart
+            $null = $sb.AppendLine("<div class='phase-header' id='phase-$($step.PhaseStart.ToLower())'>&#8212; $([System.Web.HttpUtility]::HtmlEncode($pl))</div>")
+            continue
         }
 
         $stepKey = "$($step.Index)"
@@ -904,7 +935,10 @@ function Export-HtmlReport { # Generates styled HTML report from results
             $vrCol = switch ($r.Verdict) { 'PASS' { 'var(--pass)' } 'WARN' { '#b45309' } 'FAIL' { 'var(--fail)' } default { 'var(--text)' } }
 
             $null = $sb.AppendLine("<div class='card' data-verdict='$vc'><div class='card-head'><span class='step-name'>$($r.Index). $([System.Web.HttpUtility]::HtmlEncode($r.DisplayName))</span>")
-            $null = $sb.AppendLine("<span><span class='status $sc'>$($r.Status)</span><span class='verdict $vc' title='$([System.Web.HttpUtility]::HtmlEncode($r.VerdictReason))'>$vl</span></span></div>")
+            # title attribute must be double-quoted: HtmlEncode does not encode
+            # apostrophes, so a single-quoted attribute is injectable by any verdict
+            # reason containing ' (e.g. service names, profile folder names).
+            $null = $sb.AppendLine("<span><span class='status $sc'>$([System.Web.HttpUtility]::HtmlEncode($r.Status))</span><span class='verdict $vc' title=`"$([System.Web.HttpUtility]::HtmlEncode($r.VerdictReason))`">$vl</span></span></div>")
             $null = $sb.AppendLine("<div class='card-body'><div class='summary'>$([System.Web.HttpUtility]::HtmlEncode($r.Summary))</div>")
             if ($r.VerdictReason) {
                 $null = $sb.AppendLine("<div class='summary' style='margin-top:4px;font-weight:600;color:$vrCol'>$([System.Web.HttpUtility]::HtmlEncode($r.VerdictReason))</div>")
@@ -922,8 +956,8 @@ function Export-HtmlReport { # Generates styled HTML report from results
             $priorTs  = if ($sd.Timestamp) { try { ([datetime]$sd.Timestamp).ToString('yyyy-MM-dd HH:mm') } catch { $sd.Timestamp } } else { 'prior session' }
 
             $null = $sb.AppendLine("<div class='card prev-session' data-verdict='$priorVc'><div class='card-head'>")
-            $null = $sb.AppendLine("<span class='step-name'>$($step.Index). $([System.Web.HttpUtility]::HtmlEncode($step.DisplayName)) <span class='prev-badge'>Prior session &middot; $priorTs</span></span>")
-            $null = $sb.AppendLine("<span><span class='status $priorSc'>$($sd.Status)</span>$(if ($sd.Verdict) { "<span class='verdict $priorVc'>$priorVl</span>" })</span></div>")
+            $null = $sb.AppendLine("<span class='step-name'>$($step.Index). $([System.Web.HttpUtility]::HtmlEncode($step.DisplayName)) <span class='prev-badge'>Prior session &middot; $([System.Web.HttpUtility]::HtmlEncode($priorTs))</span></span>")
+            $null = $sb.AppendLine("<span><span class='status $priorSc'>$([System.Web.HttpUtility]::HtmlEncode($sd.Status))</span>$(if ($sd.Verdict) { "<span class='verdict $priorVc'>$priorVl</span>" })</span></div>")
             if ($sd.VerdictReason) {
                 $null = $sb.AppendLine("<div class='card-body'><div class='summary'>$([System.Web.HttpUtility]::HtmlEncode($sd.VerdictReason))</div></div>")
             }
@@ -1034,20 +1068,25 @@ function Export-SessionReport { # Exports session as JSON and text
 
     $htmlPath = $null
     try {
+        # Only steps that actually ran become result cards; unrun steps are omitted so
+        # Export-HtmlReport renders its proper dimmed NOT RUN placeholder for them.
+        # Summary stays empty — VerdictReason already renders on its own line.
         $allResults = @($script:Steps | ForEach-Object {
             $key = "$($_.Index)"
             $sd  = if ($script:Session.Steps.ContainsKey($key)) { $script:Session.Steps[$key] } else { $null }
-            [PSCustomObject]@{
-                Index         = $_.Index
-                Phase         = $_.Phase
-                DisplayName   = $_.DisplayName
-                ScriptPath    = $_.ScriptPath
-                Status        = if ($sd) { $sd.Status } else { 'not-run' }
-                Summary       = if ($sd -and $sd.VerdictReason) { $sd.VerdictReason } else { '' }
-                ParsedData    = $null
-                Elapsed       = $null
-                Verdict       = if ($sd) { $sd.Verdict } else { $null }
-                VerdictReason = if ($sd) { $sd.VerdictReason } else { $null }
+            if ($sd -and $sd.Status -and $sd.Status -ne 'not-run') {
+                [PSCustomObject]@{
+                    Index         = $_.Index
+                    Phase         = $_.Phase
+                    DisplayName   = $_.DisplayName
+                    ScriptPath    = $_.ScriptPath
+                    Status        = $sd.Status
+                    Summary       = ''
+                    ParsedData    = $null
+                    Elapsed       = $null
+                    Verdict       = $sd.Verdict
+                    VerdictReason = $sd.VerdictReason
+                }
             }
         })
         $htmlPath = Export-HtmlReport -ResultSet $allResults -RunLabel 'Session Export'
