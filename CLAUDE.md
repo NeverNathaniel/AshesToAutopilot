@@ -35,7 +35,7 @@ Encoding policy: **every `.ps1` file carries a UTF-8 BOM.** Windows PowerShell 5
 
 ## Running Scripts
 
-Scripts run on Windows and require Admin elevation. They cannot execute in the Linux container that Claude Code uses; PSScriptAnalyzer is the available substitute for functional testing.
+Scripts run on Windows and require Admin elevation. They cannot execute in the Linux container that Claude Code uses; PSScriptAnalyzer and the `Tests/` suites are the available substitutes for functional testing (the Common-module functions under test are pure enough to run on pwsh anywhere).
 
 ```powershell
 # Launch the interactive toolkit
@@ -54,6 +54,21 @@ Scripts run on Windows and require Admin elevation. They cannot execute in the L
 git archive --format=zip --output=AshesToAutopilot.zip HEAD
 # Attach AshesToAutopilot.zip to the GitHub release
 ```
+
+Before cutting a release: all three `Tests/` suites must pass, `CHANGELOG.md` gets an entry for any tech-visible behavior change, and a Windows device should run `Tests\Invoke-ToolkitSelfTest.ps1 -IncludeReadOnlySteps` (elevated) at least once per release.
+
+## Adding a New Step Script
+
+Checklist — every item is load-bearing:
+
+1. Follow `Scripts/DataCollection/Get-TeamsData.ps1` as the reference implementation (init skeleton, `-LiteralPath`/`-Force` discipline, hive lifecycle).
+2. Save with a **UTF-8 BOM** (CI-enforced; BOM-less non-ASCII breaks PS 5.1 parsing).
+3. Write the report JSON to `Logs\<Script-BaseName>-Report.json` — single-step runs re-read this exact filename.
+4. Add a mapping case to `Get-StepVerdictFromData` in `Toolkit-Report.ps1` (and usually `Get-StepSummary`/`Get-HtmlTable`). Unmapped scripts surface as WARN, never PASS.
+5. Exit `0` when the script ran to completion (even with warning-level findings — the verdict mapping grades severity); exit `1` only for crashes or blocking failures, and emit the result JSON before any `exit 1`.
+6. Fail closed: a check that cannot collect its data must set an `Error`/`CollectionError` field that the verdict mapping turns into WARN — never let an empty result read as a clean PASS.
+7. Register the step in `$script:Steps` in `Start-PreWipeToolkit.ps1` and, if it belongs in the summary, in `$ScriptMap` in `Get-PreWipeSummary.ps1`.
+8. Run `.\Tests\Test-Ps51Compat.ps1` and the other suites before committing.
 
 ---
 
@@ -126,6 +141,8 @@ Scripts are grouped into four subdirectories matching the `Phase` field on each 
 
 ### Output Location (on the Windows target device)
 
+The root is ACL-restricted to SYSTEM + Administrators at creation (both the orchestrator and `Initialize-Toolkit.ps1` apply it, SID-based and idempotent) because it can hold cleartext Wi-Fi PSKs and captured BitLocker recovery keys.
+
 ```
 C:\PreWipeOutput\
 ├── session.json                  # Live session state — survives reboots
@@ -133,6 +150,10 @@ C:\PreWipeOutput\
 ├── PreWipeReport_<PC>_<ts>.json  # JSON session export
 ├── PreWipeReport_<PC>_<ts>.txt   # Plain text export
 ├── errors.log                    # Aggregated errors from step scripts
+├── Bookmarks\  Signatures\  Taskbar\  Wallpaper\   # Per-user backup folders
+├── WiFiProfiles\                 # Exported Wi-Fi XMLs (cleartext PSKs)
+├── BitLockerRecoveryKeys\        # Only on devices with no Entra/AD escrow target
+├── Scripts\                      # Cached community Autopilot script
 └── Logs\
     ├── *.log                     # Per-script run logs (incl. Start-PreWipeToolkit_Errors_<date>.log)
     └── *-Report.json             # Structured JSON output per script
