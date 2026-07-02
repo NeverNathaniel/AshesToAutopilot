@@ -131,6 +131,14 @@ try {
         }
 
         if (Test-Path $DCUInstaller) {
+            # Verify the downloaded binary is genuinely Dell-signed before running it
+            # elevated — MSP networks routinely sit behind TLS-intercepting proxies.
+            $sig = Get-AuthenticodeSignature -FilePath $DCUInstaller
+            if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Dell') {
+                Remove-Item $DCUInstaller -Force -ErrorAction SilentlyContinue
+                throw "DCU installer signature invalid (status: $($sig.Status)) — refusing to execute. Install DCU manually from dell.com/support."
+            }
+            Write-Log "DCU installer signature verified: $($sig.SignerCertificate.Subject)"
             Write-Log "Running DCU installer silently..."
             $proc = Start-Process -FilePath $DCUInstaller -ArgumentList '/s' -Wait -PassThru
             Write-Log "DCU installer exit code: $($proc.ExitCode)"
@@ -247,4 +255,6 @@ if ($NonInteractive) {
 }
 #endregion
 
+# Both tools failing to install is a blocking failure for the Dell update steps.
+if (-not $DCUResult.Success -and -not $DCCResult.Success) { exit 1 }
 exit 0

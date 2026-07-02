@@ -63,7 +63,10 @@ try {
     $Result.IsDell  = $Result.Vendor -like '*Dell*'
     Write-Log "Vendor: $($Result.Vendor) | IsDell: $($Result.IsDell)"
 } catch {
-    Write-ErrorLog "Vendor check failed: $_"; exit 1
+    Write-ErrorLog "Vendor check failed: $_"
+    $Result.Error = "Vendor check failed: $_"
+    if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
+    exit 1
 }
 #endregion
 
@@ -113,11 +116,15 @@ if ($Result.IsDell) {
         if ($Result.ScanExitCode -eq 0) {
             $Result.UpdateFound = $true
             Write-Log 'Driver updates available — applying...'
+            # Dell Command | Update 5.x documented exit codes:
+            #   0 = success, 1 = reboot required, 2 = unknown application error,
+            #   5 = reboot pending from a previous operation, 500 = no updates, 1002 = download error
             $applyMap = @{
                 0    = 'Driver updates applied successfully'
-                2    = 'Driver updates applied — reboot required'
+                1    = 'Driver updates applied — reboot required'
+                2    = 'Unknown application error during update'
+                5    = 'A reboot is pending from a previous operation — reboot and re-run'
                 500  = 'No driver updates to apply'
-                1    = 'Error during update'
                 1002 = 'Download error'
             }
             try {
@@ -129,14 +136,17 @@ if ($Result.IsDell) {
                 $Result.ExitMeaning = $meaning
                 Write-Log "DCU driver apply exit: $applyCode — $meaning"
 
-                if ($applyCode -eq 0) {
+                if ($applyCode -eq 0 -or $applyCode -eq 500) {
                     $Result.Success = $true
-                } elseif ($applyCode -eq 2) {
+                } elseif ($applyCode -eq 1) {
                     $Result.Success      = $true
                     $Result.RebootNeeded = $true
                     Write-Log 'REBOOT REQUIRED after driver updates' 'WARN'
-                } elseif ($applyCode -eq 500) {
-                    $Result.Success = $true
+                } elseif ($applyCode -eq 5) {
+                    $Result.Success      = $false
+                    $Result.RebootNeeded = $true
+                    $Result.Error        = $applyMap[5]
+                    Write-ErrorLog $Result.Error
                 } else {
                     $Result.Success = $false
                     $Result.Error   = "Apply returned $applyCode : $meaning"
@@ -151,6 +161,11 @@ if ($Result.IsDell) {
             $Result.Success     = $true
             $Result.ExitMeaning = 'Drivers are current — no update needed'
             Write-Log 'No driver updates needed'
+        } elseif ($Result.ScanExitCode -in @(1, 5)) {
+            $Result.RebootNeeded = $true
+            $Result.ExitMeaning  = "A reboot is pending from a previous operation (scan exit $($Result.ScanExitCode)) — reboot, then re-run this step"
+            $Result.Success      = $false
+            Write-ErrorLog $Result.ExitMeaning
         } else {
             $Result.ExitMeaning = "DCU scan: $($Result.DCUScan.ExitMeaning)"
             $Result.Success     = $false

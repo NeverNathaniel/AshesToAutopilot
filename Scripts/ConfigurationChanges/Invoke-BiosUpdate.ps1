@@ -125,15 +125,21 @@ if ($scanCode -eq 500) {
 } elseif ($scanCode -eq 0) {
     $Result.UpdateFound = $true
     Write-Log 'BIOS update available — applying...'
+    # Dell Command | Update 5.x documented exit codes:
+    #   0 = success, 1 = reboot required, 2 = unknown application error,
+    #   5 = reboot pending from a previous operation, 500 = no updates, 1002 = download error
     $applyMap = @{
         0    = 'BIOS update applied successfully'
-        2    = 'BIOS update applied — reboot required'
+        1    = 'BIOS update applied — reboot required'
+        2    = 'Unknown application error during update'
+        5    = 'A reboot is pending from a previous operation — reboot and re-run'
         500  = 'No BIOS updates to apply'
-        1    = 'Error during update'
         1002 = 'Download error'
     }
     try {
-        $applyArgs = "/applyUpdates -updateType=bios -reboot=disable -outputLog=`"$OutputRoot\Logs\DCU-BIOS-Update.log`""
+        # autoSuspendBitLocker: a BIOS flash changes TPM PCR measurements; without
+        # suspension the next boot lands on the BitLocker recovery prompt.
+        $applyArgs = "/applyUpdates -updateType=bios -reboot=disable -autoSuspendBitLocker=enable -outputLog=`"$OutputRoot\Logs\DCU-BIOS-Update.log`""
         $applyProc = Start-Process -FilePath $DCUExe -ArgumentList $applyArgs -Wait -PassThru -NoNewWindow
         $applyCode = $applyProc.ExitCode
         $Result.ApplyExitCode = $applyCode
@@ -141,14 +147,17 @@ if ($scanCode -eq 500) {
         $Result.ExitMeaning = $meaning
         Write-Log "DCU BIOS apply exit: $applyCode — $meaning"
 
-        if ($applyCode -eq 0) {
+        if ($applyCode -eq 0 -or $applyCode -eq 500) {
             $Result.Success = $true
-        } elseif ($applyCode -eq 2) {
+        } elseif ($applyCode -eq 1) {
             $Result.Success      = $true
             $Result.RebootNeeded = $true
             Write-Log 'REBOOT REQUIRED after BIOS update' 'WARN'
-        } elseif ($applyCode -eq 500) {
-            $Result.Success = $true
+        } elseif ($applyCode -eq 5) {
+            $Result.Success      = $false
+            $Result.RebootNeeded = $true
+            $Result.Error        = $applyMap[5]
+            Write-ErrorLog $Result.Error
         } else {
             $Result.Success = $false
             $Result.Error   = "Apply returned $applyCode : $meaning"
@@ -158,6 +167,12 @@ if ($scanCode -eq 500) {
         Write-ErrorLog "DCU apply execution failed: $_"
         $Result.Error = "Apply failed: $_"
     }
+} elseif ($scanCode -eq 1 -or $scanCode -eq 5) {
+    $Result.UpdateFound  = $null
+    $Result.RebootNeeded = $true
+    $Result.ExitMeaning  = "A reboot is pending from a previous operation (scan exit $scanCode) — reboot, then re-run this step"
+    $Result.Success      = $false
+    Write-ErrorLog $Result.ExitMeaning
 } else {
     $Result.UpdateFound  = $null
     $Result.ExitMeaning  = "DCU scan returned unexpected exit code $scanCode"
