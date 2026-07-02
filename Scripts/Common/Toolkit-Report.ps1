@@ -417,8 +417,11 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 return @{ Verdict = 'WARN'; Reason = 'Driver update status unknown' }
             }
             '*Enable-WakeOnLan*' {
+                if (-not $Parsed.NICs -or $Parsed.NICs.Count -eq 0) {
+                    $reason = if ($Parsed.Error) { $Parsed.Error } else { 'No NICs found to configure' }
+                    return @{ Verdict = 'WARN'; Reason = $reason }
+                }
                 if ($Parsed.Success -eq $false) { return @{ Verdict = 'FAIL'; Reason = 'WoL configuration failed on one or more NICs' } }
-                if (-not $Parsed.NICs -or $Parsed.NICs.Count -eq 0) { return @{ Verdict = 'WARN'; Reason = 'No NICs found to configure' } }
                 $nicFailed = @($Parsed.NICs | Where-Object { $_.Success -ne $true }).Count
                 $biosOk    = ($Parsed.IsDell -eq $false) -or (-not $Parsed.BIOS_WOL) -or (-not $Parsed.BIOS_WOL.Attempted) -or ($Parsed.BIOS_WOL.Success -eq $true)
                 if ($nicFailed -gt 0) { return @{ Verdict = 'WARN'; Reason = "WOL not set on $nicFailed NIC(s)" } }

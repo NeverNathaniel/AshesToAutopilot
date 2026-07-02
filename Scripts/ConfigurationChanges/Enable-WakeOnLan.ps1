@@ -35,10 +35,18 @@ if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
 
 #region --- Vendor ---
-$CS           = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
-$Manufacturer = $CS.Manufacturer
-$IsDell       = $Manufacturer -like '*Dell*'
-Write-Log "Manufacturer: $Manufacturer | IsDell: $IsDell"
+try {
+    $CS           = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+    $Manufacturer = $CS.Manufacturer
+    $IsDell       = $Manufacturer -like '*Dell*'
+    Write-Log "Manufacturer: $Manufacturer | IsDell: $IsDell"
+} catch {
+    Write-ErrorLog "Vendor check failed: $_"
+    if ($NonInteractive) {
+        [PSCustomObject]@{ Timestamp = (Get-Date -Format 'o'); Success = $false; Error = "Vendor check failed: $_" } | ConvertTo-Json -Depth 3
+    }
+    exit 1
+}
 #endregion
 
 #region --- BIOS WoL (Dell via DCC) ---
@@ -66,16 +74,21 @@ if ($IsDell) {
                 $setOutput = & $DCCPath --wakeonlan=LanWithPxeBoot 2>&1 | Out-String
                 Write-Log "DCC WoL set: $setOutput"
                 $BIOSWOLResult.Output = $setOutput.Trim()
-                if ($LASTEXITCODE -eq 0 -or $setOutput -match 'LanWithPxeBoot|success|enabled') {
+                # Exit code only: cctk error text echoes the attempted option/value,
+                # so matching 'enabled' in output would bless failures.
+                if ($LASTEXITCODE -eq 0) {
                     $BIOSWOLResult.Success = $true
                     $Changes += 'BIOS WoL set to LanWithPxeBoot via DCC'
                 } else {
+                    # Some models reject LanWithPxeBoot; retry with plain Enabled
                     $setOutput2 = & $DCCPath --wakeonlan=Enabled 2>&1 | Out-String
+                    Write-Log "DCC WoL set (fallback): $setOutput2"
                     if ($LASTEXITCODE -eq 0) {
                         $BIOSWOLResult.Success = $true
+                        $BIOSWOLResult.Output  = $setOutput2.Trim()
                         $Changes += 'BIOS WoL enabled via DCC'
                     } else {
-                        $BIOSWOLResult.Error = "DCC returned non-zero: $setOutput"
+                        $BIOSWOLResult.Error = "DCC returned non-zero for both WoL values: $($setOutput.Trim())"
                     }
                 }
             } else {
@@ -94,7 +107,8 @@ if ($IsDell) {
 #endregion
 
 #region --- NIC WoL ---
-$NICResults = @()
+$NICResults   = @()
+$NICEnumError = $null
 try {
     $adapters = Get-NetAdapter -ErrorAction Stop | Where-Object { $_.MediaType -eq '802.3' -and $_.Status -ne 'Not Present' }
     foreach ($nic in $adapters) {
@@ -132,25 +146,30 @@ try {
                 $Changes += "NIC '$($nic.Name)': WoL magic packet enabled"
                 Write-Log "  $($nic.Name): WoL enabled"
             } catch {
+                # No fallback here: 'netsh interface set interface admin=ENABLED'
+                # administratively enables the NIC — it has nothing to do with WoL
+                # and was masking real failures as success.
                 Write-ErrorLog "  Failed to enable WoL on $($nic.Name): $_"
-                $nicResult.Error = $_.ToString()
-                try {
-                    $null = netsh interface set interface "$($nic.Name)" admin=ENABLED 2>&1
-                    $nicResult.Success = $true
-                    $Changes += "NIC '$($nic.Name)': interface enabled via netsh"
-                } catch {}
+                $nicResult.Error   = $_.ToString()
+                $nicResult.Success = $false
             }
         }
         $NICResults += $nicResult
     }
 } catch {
     Write-ErrorLog "NIC enumeration failed: $_"
+    $NICEnumError = $_.ToString()
 }
 #endregion
 
 #region --- Result ---
 $allWereEnabled = ($NICResults.Count -gt 0) -and -not ($NICResults | Where-Object { -not $_.WasEnabled })
-$allNowEnabled  = -not ($NICResults | Where-Object { $_.Success -ne $true })
+# Zero enumerated NICs means the WoL state is UNKNOWN, not fine.
+$allNowEnabled  = ($NICResults.Count -gt 0) -and -not ($NICResults | Where-Object { $_.Success -ne $true })
+
+$ResultError = if ($NICEnumError) { "NIC enumeration failed: $NICEnumError" }
+               elseif ($NICResults.Count -eq 0) { 'No wired NICs enumerated - WoL state unknown' }
+               else { $null }
 
 $Result = [PSCustomObject]@{
     Timestamp      = (Get-Date -Format 'o')
@@ -161,6 +180,7 @@ $Result = [PSCustomObject]@{
     Changes        = $Changes
     AlreadyEnabled = $allWereEnabled
     Success        = $allNowEnabled
+    Error          = $ResultError
 }
 #endregion
 
