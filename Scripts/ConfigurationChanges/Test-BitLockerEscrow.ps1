@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Checks BitLocker status on all fixed drives and verifies/escrows recovery keys to Entra ID (Azure AD).
 
@@ -41,6 +41,18 @@ if (-not (Test-AdminElevation)) { exit 1 }
 #region --- BitLocker Check ---
 $Results = @()
 
+# Determine Entra ID join state once, up front. Escrow-failure classification must not
+# guess from exception text: real escrow errors often mention 'Azure AD' and were being
+# misclassified as not-joined, which silently passed the wipe gate.
+$azureAdJoined = $false
+try {
+    $dsregOut = (& dsregcmd /status 2>$null) | Out-String
+    $azureAdJoined = $dsregOut -match 'AzureAdJoined\s*:\s*YES'
+    Write-Log "Entra ID joined: $azureAdJoined"
+} catch {
+    Write-Log "dsregcmd unavailable - assuming not Entra ID joined: $_" 'WARN'
+}
+
 try {
     # Check system drive first, then any additional data volumes
     $sysDrive   = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop
@@ -76,32 +88,23 @@ try {
 
                 Write-Log "  Recovery Key ID: $($protector.KeyProtectorId)"
 
-                # Check if escrowed to AAD via registry
-                # Key escrow status: HKLM\SOFTWARE\Microsoft\BitLocker\RecoveryKeyInfo\*
-                $escrowVerified = $false
-                try {
-                    $escrowKey = "HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\BitLocker"
-                    if (Test-Path $escrowKey) {
-                        $escrowProps = Get-ItemProperty $escrowKey -ErrorAction SilentlyContinue
-                        # Check for AAD-backed key indicator
-                        if ($escrowProps) { $escrowVerified = $true }
-                    }
-                } catch {}
-
-                # Attempt to escrow regardless (BackupToAAD-BitLockerKeyProtector is idempotent)
-                try {
-                    Write-Log "  Attempting to escrow recovery key to Entra ID..."
-                    BackupToAAD-BitLockerKeyProtector -MountPoint $drive -KeyProtectorId $protector.KeyProtectorId -ErrorAction Stop
-                    $volResult.EscrowStatus = 'EscrowAttempted'
-                    $volResult.ActionTaken  = 'EscrowedToEntraID'
-                    Write-Log "  Escrow command executed successfully for $drive"
-                } catch {
-                    $errMsg = $_.ToString()
-                    if ($errMsg -match 'not.*joined' -or $errMsg -match 'AAD' -or $errMsg -match 'Azure') {
-                        $volResult.EscrowStatus = 'NotAzureADJoined'
-                        $volResult.ActionTaken  = 'SkippedNotAADJoined'
-                        Write-Log "  Device not Azure AD joined - escrow skipped" 'WARN'
-                    } else {
+                if (-not $azureAdJoined) {
+                    # Not joined: escrow to Entra ID is impossible. This is a blocking
+                    # state for the wipe gate, not a silent skip.
+                    $volResult.EscrowStatus = 'NotAzureADJoined'
+                    $volResult.ActionTaken  = 'SkippedNotAADJoined'
+                    Write-Log "  Device not Entra ID joined - escrow not possible" 'WARN'
+                } else {
+                    # Attempt to escrow (BackupToAAD-BitLockerKeyProtector is idempotent).
+                    # On a joined device, ANY failure here is an escrow failure.
+                    try {
+                        Write-Log "  Attempting to escrow recovery key to Entra ID..."
+                        BackupToAAD-BitLockerKeyProtector -MountPoint $drive -KeyProtectorId $protector.KeyProtectorId -ErrorAction Stop
+                        $volResult.EscrowStatus = 'EscrowAttempted'
+                        $volResult.ActionTaken  = 'EscrowedToEntraID'
+                        Write-Log "  Escrow command executed successfully for $drive"
+                    } catch {
+                        $errMsg = $_.ToString()
                         Write-ErrorLog "  Escrow failed for $drive : $errMsg"
                         $volResult.EscrowStatus = 'EscrowFailed'
                         $volResult.ActionTaken  = 'EscrowAttemptFailed'
@@ -136,8 +139,10 @@ try {
 #endregion
 
 #region --- Output ---
+# NotAzureADJoined counts as NOT escrowed: nothing was backed up anywhere.
+# NotEncrypted volumes are excluded — there are no keys to escrow.
 $allEscrowed = -not ($Results | Where-Object {
-    $_.EscrowStatus -in @('EscrowFailed', 'NoRecoveryKey', 'Error')
+    $_.EscrowStatus -in @('EscrowFailed', 'NoRecoveryKey', 'Error', 'NotAzureADJoined')
 })
 
 $Summary = [PSCustomObject]@{
@@ -163,7 +168,7 @@ if ($NonInteractive) {
         } elseif ($r.EscrowStatus -eq 'NotEncrypted') {
             Write-Host "  WARN $($r.DriveLetter): BitLocker not enabled." -ForegroundColor Yellow
         } elseif ($r.EscrowStatus -eq 'NotAzureADJoined') {
-            Write-Host "  WARN $($r.DriveLetter): Device not Azure AD joined - escrow skipped." -ForegroundColor Yellow
+            Write-Host "  FAIL $($r.DriveLetter): Device not Entra ID joined - recovery key is NOT backed up anywhere." -ForegroundColor Red
         }
     }
     Write-Host ""
