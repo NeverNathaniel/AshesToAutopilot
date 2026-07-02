@@ -202,9 +202,25 @@ function Get-StepSummary { # Generates human-readable summary from step output
 function Get-StepVerdict { # Evaluates step result (PASS/WARN/FAIL)
     param([PSCustomObject]$Parsed, [string]$ScriptFile, [string]$Status) # Parsed output, script path, execution status
 
-    if ($Status -eq 'FAIL') { return @{ Verdict = 'FAIL'; Reason = 'Script execution failed' } } # Execution error = fail
     if ($Status -eq 'SKIP') { return @{ Verdict = 'WARN'; Reason = 'Step was skipped' } } # Skipped step = warn
-    if ($null  -eq $Parsed) { return @{ Verdict = 'WARN'; Reason = 'No output to evaluate' } } # No output = warn
+    if ($null -eq $Parsed) {
+        if ($Status -eq 'FAIL') { return @{ Verdict = 'FAIL'; Reason = 'Script execution failed' } } # Crashed with no output
+        return @{ Verdict = 'WARN'; Reason = 'No output to evaluate' } # No output = warn
+    }
+
+    # A non-zero exit with parseable JSON still gets the per-script evaluation so the
+    # tech sees the real reason — but it can never be upgraded to PASS.
+    $v = Get-StepVerdictFromData -Parsed $Parsed -ScriptFile $ScriptFile
+    if ($Status -eq 'FAIL' -and $v.Verdict -ne 'FAIL') {
+        return @{ Verdict = 'FAIL'; Reason = "$($v.Reason) (script exited non-zero)" }
+    }
+    return $v
+}
+
+function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON (no exit-code context)
+    param([PSCustomObject]$Parsed, [string]$ScriptFile)
+
+    if ($null -eq $Parsed) { return @{ Verdict = 'WARN'; Reason = 'No output to evaluate' } } # Defensive guard
 
     try {
         switch -Wildcard ($ScriptFile) {
