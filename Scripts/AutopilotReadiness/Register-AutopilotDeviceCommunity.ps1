@@ -8,9 +8,9 @@
     installs the required microsoft.graph.authentication module, then:
 
     Interactive mode:
-      - Pre-authenticates via Connect-MgGraph device code flow so the sign-in
-        code is visible in the toolkit's retro terminal UI before the community
-        script runs. The community script then reuses the cached token silently.
+      - Pre-authenticates via a Connect-MgGraph browser sign-in (WAM disabled so a
+        real browser window opens) before the community script runs. The community
+        script then reuses the cached token silently.
 
     NonInteractive mode (service principal):
       - Requires -TenantId, -AppId, and -AppSecret. Passes them directly to the
@@ -140,28 +140,43 @@ try {
     Write-OK  "Community script downloaded ($scriptSize KB) → $communityScriptPath"
     Write-Log "Community script downloaded ($scriptSize KB)"
 } catch {
-    Write-ErrorLog "Community script download failed: $_"
-    $Result.Error = "Community script download failed: $_"
-    Write-Err "Download failed: $_"
-    if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
-    exit 1
+    if (Test-Path $communityScriptPath) {
+        # Offline/blocked network with a cached copy from a previous run: continue.
+        Write-Log "Community script download failed - using cached copy from a previous run: $_" 'WARN'
+        Write-Wrn 'Download failed - using cached copy from a previous run'
+    } else {
+        Write-ErrorLog "Community script download failed: $_"
+        $Result.Error = "Community script download failed: $_"
+        Write-Err "Download failed: $_"
+        if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
+        exit 1
+    }
 }
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers -ErrorAction SilentlyContinue
 
-    $mgAuth = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable -ErrorAction SilentlyContinue |
-        Sort-Object Version -Descending | Select-Object -First 1
+    # Prefer the newest installed version within the community script's supported
+    # range (max 2.9.1); a newer pre-installed SDK is the documented incompatibility.
+    $mgAuthAll = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable -ErrorAction SilentlyContinue |
+        Sort-Object Version -Descending
+    $mgAuth = $mgAuthAll | Where-Object { $_.Version -le [version]'2.9.1' } | Select-Object -First 1
+    if (-not $mgAuth -and $mgAuthAll) {
+        $mgAuth = $mgAuthAll | Select-Object -First 1
+        Write-Log "No Microsoft.Graph.Authentication <= 2.9.1 installed; using v$($mgAuth.Version) (community script supports max 2.9.1)" 'WARN'
+        Write-Wrn "Graph module v$($mgAuth.Version) exceeds the community script's supported max (2.9.1)"
+    }
     if (-not $mgAuth) {
         Write-Log  'Installing Microsoft.Graph.Authentication...'
         Write-Info 'Installing Microsoft.Graph.Authentication...'
         Install-Module 'Microsoft.Graph.Authentication' -Force -Scope AllUsers -AllowClobber -MaximumVersion '2.9.1' -ErrorAction Stop
-        $mgAuth = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+        $mgAuth = Get-Module 'Microsoft.Graph.Authentication' -ListAvailable |
+            Where-Object { $_.Version -le [version]'2.9.1' } | Sort-Object Version -Descending | Select-Object -First 1
         if (-not $mgAuth) { throw 'Install reported success but module not found in PSModulePath — re-run step 25.' }
     }
     $Result.GraphModVersion = $mgAuth.Version.ToString()
-    Import-Module 'Microsoft.Graph.Authentication' -Force -ErrorAction Stop
+    Import-Module 'Microsoft.Graph.Authentication' -RequiredVersion $mgAuth.Version -Force -ErrorAction Stop
     Write-OK  "Microsoft.Graph.Authentication v$($Result.GraphModVersion)"
     Write-Log "Microsoft.Graph.Authentication v$($Result.GraphModVersion) ready"
 } catch {
@@ -190,9 +205,10 @@ try {
 
 #region --- Step 3: OAuth pre-authentication (interactive mode only) ---
 
-# In NonInteractive mode without credentials, we cannot authenticate interactively.
-if ($NonInteractive -and (-not $AppId) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)) {
-    $msg = 'Interactive OAuth requires interactive mode. Run this step via [3] Run Single Step to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret (or a certificate).'
+# In NonInteractive mode without usable credentials, we cannot authenticate.
+# An AppId without its AppSecret is not usable — gate on the complete pair.
+if ($NonInteractive -and (-not ($AppId -and $AppSecret)) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)) {
+    $msg = 'Interactive OAuth requires interactive mode. Run this step via [3] Run Single Step to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret together (or a certificate).'
     Write-ErrorLog $msg
     $Result.Error        = $msg
     $Result.UploadStatus = 'NeedsInteractiveAuth'
@@ -297,14 +313,17 @@ if (-not $NonInteractive) {
 $communityExitCode = 0
 $communityOutput   = $null
 $invokeArgs        = $communityArgs
+$runStart          = Get-Date # CSV freshness gate: only artifacts newer than this verify THIS run
 
 for ($attempt = 0; $attempt -le 1; $attempt++) {
     try {
-        $LASTEXITCODE = 0
+        $global:LASTEXITCODE = 0 # a plain assignment would create a script-scope shadow that always reads 0
         if ($NonInteractive) {
-            # Capture all output so we can build our JSON result
-            $communityOutput   = & $communityScriptPath @invokeArgs 2>&1 | Out-String
-            $communityExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+            # Capture ALL streams (*>&1) — the community script reports status via
+            # Write-Host, which 2>&1 misses. Invocation stays in-process on purpose:
+            # -AppSecret must never appear on a child-process command line.
+            $communityOutput   = & $communityScriptPath @invokeArgs *>&1 | Out-String
+            $communityExitCode = if ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
             Write-Log "Community script exit code: $communityExitCode"
             Write-Log "Community script output:`n$communityOutput"
 
@@ -316,7 +335,7 @@ for ($attempt = 0; $attempt -le 1; $attempt++) {
         } else {
             # Let the community script write to the console directly — the user sees live output
             & $communityScriptPath @invokeArgs
-            $communityExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+            $communityExitCode = if ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
             Write-Log "Community script exit code: $communityExitCode"
         }
         break
@@ -345,9 +364,14 @@ if (-not $NonInteractive) {
 #region --- Parse results ---
 Write-Log 'Parsing community script results...'
 
-# Check CSV output to confirm hash was collected
+# Check CSV output to confirm hash was collected. A CSV left over from a previous
+# run/toolkit version cannot verify THIS registration — only trust fresh files.
 $hashCollected = $false
-if (Test-Path $csvPath) {
+$csvIsFresh = (Test-Path $csvPath) -and ((Get-Item $csvPath).LastWriteTime -ge $runStart)
+if ((Test-Path $csvPath) -and -not $csvIsFresh) {
+    Write-Log "Ignoring stale CSV at $csvPath (predates this run)" 'WARN'
+}
+if ($csvIsFresh) {
     try {
         $csvData = Import-Csv $csvPath -ErrorAction Stop
         $hashEntry = $csvData | Select-Object -First 1
