@@ -75,7 +75,10 @@ try {
 #endregion
 
 #region --- Enumerate local accounts ---
+# Name list covers en-US; the RID check is locale-proof (500=Administrator,
+# 501=Guest, 503=DefaultAccount, 504=WDAGUtilityAccount on any language).
 $SystemAccounts = @('Administrator', 'Guest', 'DefaultAccount', 'WDAGUtilityAccount')
+$SystemRidPattern = '-(500|501|503|504)$'
 $NonSystem = @()
 
 $useLocalUser = [bool](Get-Command Get-LocalUser -ErrorAction SilentlyContinue)
@@ -92,6 +95,7 @@ if ($useLocalUser) {
     foreach ($u in $localUsers) {
         if ($SystemAccounts -contains $u.Name) { continue }
         $sidValue = if ($u.SID) { $u.SID.Value } else { $null }
+        if ($sidValue -and $sidValue -match $SystemRidPattern) { continue }
         $isAdmin  = $false
         if ($sidValue -and $AdminSidSet.ContainsKey($sidValue)) { $isAdmin = $true }
         elseif ($AdminNameSet.ContainsKey($u.Name) -or $AdminNameSet.ContainsKey("$env:COMPUTERNAME\$($u.Name)")) { $isAdmin = $true }
@@ -119,6 +123,7 @@ if ($useLocalUser) {
     foreach ($u in $cimUsers) {
         if ($SystemAccounts -contains $u.Name) { continue }
         $sidValue = $u.SID
+        if ($sidValue -and $sidValue -match $SystemRidPattern) { continue }
         $isAdmin  = $false
         if ($sidValue -and $AdminSidSet.ContainsKey($sidValue)) { $isAdmin = $true }
         elseif ($AdminNameSet.ContainsKey($u.Name) -or $AdminNameSet.ContainsKey("$env:COMPUTERNAME\$($u.Name)")) { $isAdmin = $true }

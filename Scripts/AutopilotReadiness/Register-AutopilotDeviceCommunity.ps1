@@ -290,7 +290,12 @@ $csvPath = "$OutputRoot\AutopilotHash_Community.csv"
 # NOTE: -OutputFile is in the 'Default' parameter set; -Online activates the 'Online'
 # parameter set. Passing both triggers "positional parameter cannot be found" error.
 # With -Online the script uploads directly to Intune and does not write a local CSV.
-$communityArgs = @('-Online', '-Assign')
+# -Assign makes the community script poll Intune every 30s with NO timeout until a
+# profile is assigned. Under NonInteractive output capture that can hang a batch run
+# indefinitely, so only interactive runs (where the tech sees the polling) wait for
+# assignment; NonInteractive registers and returns (verdict already says
+# verify-in-Intune for unconfirmed registrations).
+$communityArgs = if ($NonInteractive) { @('-Online') } else { @('-Online', '-Assign') }
 if ($GroupTag)               { $communityArgs += '-GroupTag';               $communityArgs += $GroupTag }
 if ($AssignedUser)           { $communityArgs += '-AssignedUser';           $communityArgs += $AssignedUser }
 if ($TenantId)               { $communityArgs += '-TenantId';               $communityArgs += $TenantId }

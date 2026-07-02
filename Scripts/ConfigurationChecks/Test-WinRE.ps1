@@ -80,6 +80,27 @@ try {
         Write-Log "WinRE does not appear to be installed" 'WARN'
     }
 
+    # Locale-independent fallback: reagentc output is fully localized, so on
+    # non-English Windows none of the regexes above match. ReAgent.xml carries a
+    # real GUID in WinreBCD id when WinRE is enabled, all-zeros when disabled.
+    if (-not $Result.WinREEnabled) {
+        $reagentXmlPath = "$env:SystemRoot\System32\Recovery\ReAgent.xml"
+        if (Test-Path $reagentXmlPath) {
+            try {
+                [xml]$reagentXml = Get-Content $reagentXmlPath -Raw -ErrorAction Stop
+                $winreBcdId = $reagentXml.WindowsRE.WinreBCD.id
+                if ($winreBcdId -and $winreBcdId -ne '{00000000-0000-0000-0000-000000000000}') {
+                    $Result.WinREEnabled   = $true
+                    $Result.WinREInstalled = $true
+                    if (-not $Result.WinRELocation) { $Result.WinRELocation = "Per ReAgent.xml (WinreBCD $winreBcdId)" }
+                    Write-Log "WinRE enabled per ReAgent.xml fallback (WinreBCD $winreBcdId)"
+                }
+            } catch {
+                Write-Log "ReAgent.xml fallback failed: $_" 'WARN'
+            }
+        }
+    }
+
 } catch {
     Write-ErrorLog "reagentc failed: $_"
     $Result.Error = $_.ToString()
