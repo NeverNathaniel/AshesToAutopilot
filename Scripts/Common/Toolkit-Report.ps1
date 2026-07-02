@@ -255,8 +255,9 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 return @{ Verdict = 'WARN'; Reason = 'Secondary profile(s) not synced' }
             }
             '*Find-UnbackedData*' {
-                $criticalFail   = @('QuickBooks', 'QuickBooks_Bkp', 'Access_DB', 'Access_DB_Accdb', 'SQLite_DB', 'Generic_DB')
-                $warnCategories = @('PST_Files', 'SSH_Keys', 'Cert_PFX', 'Cert_CER')
+                # SQLite_DB/Generic_DB are catch-all extension matches (app caches, exports) — review-level, not blocking
+                $criticalFail   = @('QuickBooks', 'QuickBooks_Bkp', 'Access_DB', 'Access_DB_Accdb')
+                $warnCategories = @('PST_Files', 'SSH_Keys', 'Cert_PFX', 'Cert_CER', 'SQLite_DB', 'Generic_DB', 'LocalOneNote', 'VPN_Config', 'StickyNotes')
                 $hasFail = $false; $hasWarn = $false
                 if ($Parsed.ProfileFindings) {
                     foreach ($pf in $Parsed.ProfileFindings) {
@@ -268,8 +269,8 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                         }
                     }
                 }
-                if ($hasFail) { return @{ Verdict = 'FAIL'; Reason = 'Database or QuickBooks files found outside OneDrive' } }
-                if ($hasWarn) { return @{ Verdict = 'WARN'; Reason = 'PSTs, SSH keys, or certificates found outside OneDrive' } }
+                if ($hasFail) { return @{ Verdict = 'FAIL'; Reason = 'QuickBooks or Access database files found outside OneDrive' } }
+                if ($hasWarn) { return @{ Verdict = 'WARN'; Reason = 'Unbacked personal data found outside OneDrive — review findings' } }
                 return @{ Verdict = 'PASS'; Reason = 'No critical unbacked data found' }
             }
             '*Get-DownloadsSize*' {

@@ -72,6 +72,10 @@ function Search-UnbackedFiles {
 
     $findings = @()
 
+    # App-generated cache/database noise excluded from the broad profile-root scans.
+    # Dedicated targets (StickyNotes, SSH) use precise paths and are not filtered.
+    $noisePattern = '\\AppData\\Local\\(Microsoft\\Windows|Microsoft\\Edge|Google|BraveSoftware|Packages|Temp|Comms|ConnectedDevicesPlatform|D3DSCache|SquirrelTemp)\\|\\AppData\\Roaming\\Mozilla\\Firefox\\|\\AppData\\Roaming\\Microsoft\\Teams\\|thumbcache_[^\\]*\.db$|iconcache[^\\]*\.db$|\\WebCache\\|\\INetCache\\|\\CacheStorage\\'
+
     $scanTargets = @(
         @{ Label = 'PST_Files';        Path = $ProfilePath; Filter = '*.pst'; Recurse = $true  }
         @{ Label = 'SSH_Keys';         Path = (Join-Path $ProfilePath '.ssh'); Filter = '*'; Recurse = $true }
@@ -89,15 +93,19 @@ function Search-UnbackedFiles {
     foreach ($target in $scanTargets) {
         if (-not (Test-Path $target.Path)) { continue }
         try {
-            $params = @{ Path = $target.Path; Filter = $target.Filter; ErrorAction = 'SilentlyContinue' }
+            # -Force: hidden directories (AppData!) are skipped without it, hiding e.g. legacy Outlook PSTs
+            $params = @{ Path = $target.Path; Filter = $target.Filter; Force = $true; ErrorAction = 'SilentlyContinue' }
             if ($target.Recurse) { $params.Recurse = $true }
             $items = Get-ChildItem @params | Where-Object { -not $_.PSIsContainer }
+            if ($target.Path -eq $ProfilePath -and $target.Recurse) {
+                $items = $items | Where-Object { $_.FullName -notmatch $noisePattern }
+            }
 
             foreach ($item in $items) {
                 # Check if inside any OneDrive path
                 $inOneDrive = $false
                 foreach ($odp in $OneDrivePaths) {
-                    if ($item.FullName -like "$odp*") { $inOneDrive = $true; break }
+                    if ($item.FullName.StartsWith("$odp\", [System.StringComparison]::OrdinalIgnoreCase)) { $inOneDrive = $true; break }
                 }
                 if (-not $inOneDrive) {
                     $findings += [PSCustomObject]@{
@@ -140,11 +148,11 @@ function Search-UnbackedFiles {
     foreach ($onp in $onenotePaths) {
         if (-not (Test-Path $onp)) { continue }
         try {
-            $onenoteFiles = Get-ChildItem -Path $onp -Filter '*.onetoc2' -Recurse -ErrorAction SilentlyContinue
+            $onenoteFiles = Get-ChildItem -Path $onp -Filter '*.onetoc2' -Recurse -Force -ErrorAction SilentlyContinue
             foreach ($onf in $onenoteFiles) {
                 $inOneDrive = $false
                 foreach ($odp in $OneDrivePaths) {
-                    if ($onf.FullName -like "$odp*") { $inOneDrive = $true; break }
+                    if ($onf.FullName.StartsWith("$odp\", [System.StringComparison]::OrdinalIgnoreCase)) { $inOneDrive = $true; break }
                 }
                 if (-not $inOneDrive) {
                     $findings += [PSCustomObject]@{
@@ -174,12 +182,15 @@ foreach ($Profile in $Profiles) {
 
     Write-Log "Scanning profile: $ProfileName"
 
-    $HiveLoaded = Mount-UserHive -UserProfile $Profile
+    $HiveLoaded = $false
+    try {
+        $HiveLoaded = Mount-UserHive -UserProfile $Profile
 
-    $odPaths  = Find-OneDrivePaths -ProfilePath $ProfilePath -SID $SID
-    $findings = Search-UnbackedFiles -ProfilePath $ProfilePath -OneDrivePaths $odPaths
-
-    if ($HiveLoaded) { Dismount-UserHive -SID $SID }
+        $odPaths  = Find-OneDrivePaths -ProfilePath $ProfilePath -SID $SID
+        $findings = Search-UnbackedFiles -ProfilePath $ProfilePath -OneDrivePaths $odPaths
+    } finally {
+        if ($HiveLoaded) { Dismount-UserHive -SID $SID }
+    }
 
     $AllProfileFindings += [PSCustomObject]@{
         Profile     = $ProfileName
