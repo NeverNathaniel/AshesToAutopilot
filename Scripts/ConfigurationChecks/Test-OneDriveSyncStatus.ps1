@@ -1,11 +1,13 @@
-<#
+﻿<#
 .SYNOPSIS
     Confirms OneDrive sync is actually complete before approving wipe.
 
 .DESCRIPTION
-    Goes beyond KFM configuration checks to verify that OneDrive is actively synced
-    and up-to-date for each user profile. Checks sync engine status, pending uploads,
-    and last sync timestamps. Returns a go/no-go verdict for wipe safety.
+    Goes beyond KFM configuration checks to verify OneDrive account sign-in and
+    initial-sync completion for each user profile, plus whether the OneDrive process
+    is running. Pending uploads are NOT knowable from the registry, so the verdict
+    fails closed: a profile is only SafeToWipe when a signed-in account has completed
+    its first sync AND OneDrive is running. Returns a go/no-go verdict for wipe safety.
 
 .PARAMETER NonInteractive
     Suppress all prompts. Output structured JSON to stdout. Exit cleanly.
@@ -79,13 +81,14 @@ foreach ($Profile in $Profiles) {
         Issues           = @()
     }
 
-    $HiveLoaded = Mount-UserHive -UserProfile $Profile
-    if (-not $HiveLoaded -and -not (Test-Path "Registry::HKEY_USERS\$SID")) {
-        $ProfileResult.Issues += 'No NTUSER.DAT found'
-        $Results += $ProfileResult
-        continue
-    }
+    $HiveLoaded = $false
     try {
+        $HiveLoaded = Mount-UserHive -UserProfile $Profile
+        if (-not $HiveLoaded -and -not (Test-Path "Registry::HKEY_USERS\$SID")) {
+            $ProfileResult.Issues += 'No NTUSER.DAT found'
+            $Results += $ProfileResult
+            continue
+        }
 
         $ODAccountsKey = "Registry::HKEY_USERS\$SID\Software\Microsoft\OneDrive\Accounts"
 
@@ -97,30 +100,25 @@ foreach ($Profile in $Profiles) {
             foreach ($acct in $accounts) {
                 $props = Get-ItemProperty $acct.PSPath -ErrorAction SilentlyContinue
                 if (-not $props) { continue }
+                # Skip subkeys that aren't signed-in accounts (no UserEmail = not a real account)
+                if (-not $props.UserEmail) { continue }
 
-                $stateMap = @{ 0 = 'UpToDate'; 1 = 'Syncing'; 2 = 'Paused'; 3 = 'Error'; 4 = 'NotSignedIn' }
-                $lastKnownState = $props.LastKnownState
-                $stateStr = if ($null -ne $lastKnownState) { $stateMap[[int]$lastKnownState] } else { 'Unknown' }
-                if (-not $stateStr) { $stateStr = "State$lastKnownState" }
+                # OneDrive does NOT write a 'LastKnownState' DWORD (see Test-OneDriveKFM).
+                # The reliable registry signals are UserEmail (signed in) and
+                # ClientFirstSyncCompleted (initial sync finished).
+                $syncState = if ($props.ClientFirstSyncCompleted -eq 1) { 'Configured' } else { 'FirstSyncNotCompleted' }
 
                 $acctInfo = [PSCustomObject]@{
-                    AccountName    = $acct.PSChildName
-                    UserFolder     = $props.UserFolder
-                    LastKnownState = $stateStr
-                    StateCode      = $lastKnownState
-                    UserEmail      = $props.UserEmail
+                    AccountName = $acct.PSChildName
+                    UserFolder  = $props.UserFolder
+                    UserEmail   = $props.UserEmail
+                    SyncState   = $syncState
                 }
 
                 $ProfileResult.Accounts += $acctInfo
 
-                if ($null -ne $lastKnownState -and $lastKnownState -gt 0) {
-                    if ($lastKnownState -eq 1) {
-                        $ProfileResult.Issues += "Account '$($acct.PSChildName)' is still syncing"
-                    } elseif ($lastKnownState -eq 2) {
-                        $ProfileResult.Issues += "Account '$($acct.PSChildName)' sync is paused"
-                    } elseif ($lastKnownState -ge 3) {
-                        $ProfileResult.Issues += "Account '$($acct.PSChildName)' sync error (state: $stateStr)"
-                    }
+                if ($syncState -ne 'Configured') {
+                    $ProfileResult.Issues += "Account '$($acct.PSChildName)' has not completed its initial sync"
                 }
             }
         }
@@ -141,22 +139,21 @@ foreach ($Profile in $Profiles) {
             }
         }
 
-        # Determine overall status for this profile
+        # Determine overall status for this profile. Fail closed: this is a wipe gate,
+        # and an unverifiable sync state must never read as safe.
         if (-not $ProfileResult.OneDriveConfigured) {
             $ProfileResult.OverallStatus = 'NotConfigured'
             $ProfileResult.Issues += 'OneDrive not configured'
+        } elseif ($ProfileResult.Accounts.Count -eq 0) {
+            $ProfileResult.OverallStatus = 'NoAccountSignedIn'
+            $ProfileResult.Issues += 'OneDrive present but no account is signed in'
         } elseif ($ProfileResult.Issues.Count -eq 0) {
-            $allUpToDate = $true
-            foreach ($a in $ProfileResult.Accounts) {
-                if ($a.LastKnownState -ne 'UpToDate' -and $a.LastKnownState -ne 'Unknown') {
-                    $allUpToDate = $false
-                }
-            }
-            if ($allUpToDate) {
-                $ProfileResult.OverallStatus = 'UpToDate'
+            if ($OneDriveRunning) {
+                $ProfileResult.OverallStatus = 'Configured'
                 $ProfileResult.SafeToWipe = $true
             } else {
-                $ProfileResult.OverallStatus = 'Unknown'
+                $ProfileResult.OverallStatus = 'ProcessNotRunning'
+                $ProfileResult.Issues += 'OneDrive process not running — sync currency cannot be verified; start OneDrive and let it finish syncing'
             }
         } else {
             $ProfileResult.OverallStatus = 'NotReady'
@@ -221,7 +218,7 @@ if ($NonInteractive) {
         $color = if ($r.SafeToWipe) { 'Green' } else { 'Red' }
         Write-Host "  $($r.Profile): $($r.OverallStatus)" -ForegroundColor $color
         foreach ($a in $r.Accounts) {
-            Write-Host "    Account: $($a.AccountName) - $($a.LastKnownState)"
+            Write-Host "    Account: $($a.AccountName) - $($a.SyncState)"
         }
         if ($r.Issues.Count -gt 0) {
             foreach ($issue in $r.Issues) {
