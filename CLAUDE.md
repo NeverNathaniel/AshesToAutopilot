@@ -18,7 +18,20 @@ Invoke-ScriptAnalyzer -Path . -Recurse -IncludeRule 'PSAvoidGlobalAliases','PSAv
 Invoke-ScriptAnalyzer -Path .\Scripts\DataCollection\Find-UnbackedData.ps1
 ```
 
-CI runs the same two rules via `.github/workflows/powershell.yml` on every push/PR to `main`. Results are uploaded to GitHub Code Scanning as SARIF.
+CI runs four rules (`PSAvoidGlobalAliases`, `PSAvoidUsingConvertToSecureStringWithPlainText`, `PSUseBOMForUnicodeEncodedFile`, `PSAvoidAssignmentToAutomaticVariable`) via `.github/workflows/powershell.yml` on every push/PR to `main`. Results are uploaded to GitHub Code Scanning as SARIF.
+
+## Testing
+
+`Tests/` contains the regression gates, all runnable on pwsh (any OS) and Windows PowerShell 5.1. CI runs the first three on every push/PR:
+
+```powershell
+.\Tests\Test-Ps51Compat.ps1      # encoding + PS 5.1 parse simulation + PS7-operator scan
+.\Tests\Test-ToolkitEngine.ps1   # step engine exit-code/stream-capture tests
+.\Tests\Test-VerdictLogic.ps1    # verdict evaluator (fail-closed wipe-safety) rules
+.\Tests\Invoke-ToolkitSelfTest.ps1 [-IncludeReadOnlySteps]  # on-device pre-deployment check (Windows)
+```
+
+Encoding policy: **every `.ps1` file carries a UTF-8 BOM.** Windows PowerShell 5.1 reads BOM-less files as ANSI, and non-ASCII characters (em-dashes, box-drawing) decode to smart quotes that break parsing. `Test-Ps51Compat.ps1` fails any non-ASCII file without a BOM.
 
 ## Running Scripts
 

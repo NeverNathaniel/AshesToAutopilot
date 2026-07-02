@@ -39,7 +39,7 @@ jobs:
           path: .\
           recurse: true
           # Include your own basic security rules. Removing this option will run all the rules
-          includeRule: '"PSAvoidGlobalAliases", "PSAvoidUsingConvertToSecureStringWithPlainText"'
+          includeRule: '"PSAvoidGlobalAliases", "PSAvoidUsingConvertToSecureStringWithPlainText", "PSUseBOMForUnicodeEncodedFile", "PSAvoidAssignmentToAutomaticVariable"'
           output: results.sarif
 
       # Upload the SARIF file generated in the previous step
@@ -47,3 +47,28 @@ jobs:
         uses: github/codeql-action/upload-sarif@411c4c9a36b3fca4d674f06b6396b2c6d23522c6 # v3
         with:
           sarif_file: results.sarif
+
+  tests:
+    name: Toolkit tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Gate 1: encoding + PS 5.1 parse simulation + PS7-only operator scan.
+      # This is the check that catches BOM-less non-ASCII files, which fail to
+      # parse outright on Windows PowerShell 5.1.
+      - name: PS 5.1 compatibility gate
+        shell: pwsh
+        run: ./Tests/Test-Ps51Compat.ps1
+
+      # Gate 2: step engine exit-code and stream-capture behavior
+      - name: Engine unit tests
+        shell: pwsh
+        run: ./Tests/Test-ToolkitEngine.ps1
+
+      # Gate 3: verdict evaluator rules (fail-closed wipe-safety logic)
+      - name: Verdict unit tests
+        shell: pwsh
+        run: ./Tests/Test-VerdictLogic.ps1
