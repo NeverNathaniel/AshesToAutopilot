@@ -16,21 +16,24 @@ function Invoke-StepCapture { # Executes step and captures output
 
     if (-not (Test-Path $fullPath)) {
         Write-Log "Script not found, skipping: $($Step.ScriptPath)" -Level 'WARN' # Log missing script
-        return @{ Status = 'SKIP'; Parsed = $null; Summary = 'Script not found'; Elapsed = $null; Verdict = 'WARN'; VerdictReason = 'Step was skipped — script missing' } # Return skip
+        return @{ Status = 'SKIP'; Parsed = $null; Summary = 'Script not found'; Elapsed = $null; ExitCode = $null; Verdict = 'WARN'; VerdictReason = 'Step was skipped — script missing' } # Return skip
     }
 
-    $LASTEXITCODE = 0 # Reset exit code
+    $global:LASTEXITCODE = 0 # Reset engine exit code (a plain assignment here would create a function-local shadow)
     $exitCode = 0 # Initialize exit code
     $parsed   = $null # Initialize parsed output
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew() # Start timer
     try {
-        $jsonRaw  = & $fullPath -NonInteractive 2>&1 | Out-String # Execute script and capture output
-        $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 } # Capture exit code
+        $rawOutput = & $fullPath -NonInteractive 2>&1 # Execute; success + error streams as separate objects
+        $exitCode  = if ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 } # Capture real exit code
+        $errRecs   = @($rawOutput | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+        foreach ($e in $errRecs) { Write-Log "Step $($Step.Index) stderr: $e" -Level 'WARN' }
+        $jsonRaw   = ($rawOutput | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) | Out-String # JSON must come only from the success stream
     } catch {
         $sw.Stop() # Stop timer
         Write-ErrorLog "Step $($Step.Index) ($($Step.DisplayName)) threw: $_" # Log exception
-        return @{ Status = 'FAIL'; Parsed = $null; Summary = "Error: $_"; Elapsed = $sw.Elapsed; Verdict = 'FAIL'; VerdictReason = 'Script execution failed' } # Return failure
+        return @{ Status = 'FAIL'; Parsed = $null; Summary = "Error: $_"; Elapsed = $sw.Elapsed; ExitCode = 1; Verdict = 'FAIL'; VerdictReason = 'Script execution failed' } # Return failure
     }
     $sw.Stop() # Stop timer
 
@@ -51,6 +54,7 @@ function Invoke-StepCapture { # Executes step and captures output
         Parsed        = $parsed
         Summary       = $summary
         Elapsed       = $sw.Elapsed
+        ExitCode      = $exitCode
         Verdict       = $verdict.Verdict
         VerdictReason = $verdict.Reason
     }
@@ -73,7 +77,8 @@ function Invoke-StepInteractive { # Runs step interactively with output
     if (-not (Test-Path $fullPath)) {
         Write-Host "  [SKIP] Script not found: $($Step.ScriptPath)" -ForegroundColor Yellow
         $Step.Status = 'SKIP'
-        Update-SessionStep -Index $Step.Index -Status 'SKIP' -ExitCode $null
+        Update-SessionStep -Index $Step.Index -Status 'SKIP' -ExitCode $null `
+            -Verdict 'WARN' -VerdictReason 'Step was skipped — script missing'
         Save-Session
         Write-Host ''
         Write-Host '  Press any key to return to menu...' -ForegroundColor DarkGray
@@ -84,11 +89,11 @@ function Invoke-StepInteractive { # Runs step interactively with output
     Write-Host "  $('─' * 62)" -ForegroundColor DarkGray
     Write-Host ''
 
-    $LASTEXITCODE = 0
+    $global:LASTEXITCODE = 0 # Reset engine exit code (a plain assignment here would create a function-local shadow)
     $exitCode = 0
     try {
         & $fullPath
-        $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        $exitCode = if ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
     } catch {
         Write-Host ''
         Write-Host "  [FAIL] Unhandled error: $_" -ForegroundColor Red
@@ -155,8 +160,7 @@ function Invoke-RunSteps { # Executes batch of steps and collects results
         $result = Invoke-StepCapture -Step $step # Execute step and capture output
 
         $step.Status = $result.Status # Update step status
-        $exitCodeVal = if ($result.Status -eq 'DONE') { 0 } else { 1 }
-        Update-SessionStep -Index $step.Index -Status $step.Status -ExitCode $exitCodeVal `
+        Update-SessionStep -Index $step.Index -Status $step.Status -ExitCode $result.ExitCode `
             -Verdict $result.Verdict -VerdictReason $result.VerdictReason
         Save-Session # Persist session state
 
