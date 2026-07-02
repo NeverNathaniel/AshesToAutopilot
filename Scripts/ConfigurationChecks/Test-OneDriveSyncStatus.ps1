@@ -236,5 +236,6 @@ if ($NonInteractive) {
 }
 #endregion
 
-if ($OverallVerdict -eq 'NOT_SAFE') { exit 1 }
+# NOT_SAFE severity is graded by the orchestrator (primary profile -> FAIL, secondary -> WARN);
+# exit 1 is reserved for crashes per the toolkit I/O contract.
 exit 0

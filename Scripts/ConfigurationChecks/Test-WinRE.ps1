@@ -111,6 +111,6 @@ if ($NonInteractive) {
 }
 #endregion
 
-if (-not $Result.WinREEnabled) { exit 1 }
-
+# WinRE-disabled is a warning-level state (the orchestrator maps it to WARN with a
+# remediation hint); exit 1 is reserved for crashes per the toolkit I/O contract.
 exit 0

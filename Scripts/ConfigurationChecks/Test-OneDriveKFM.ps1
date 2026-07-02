@@ -194,8 +194,6 @@ $Summary = [PSCustomObject]@{
 
 $Summary | ConvertTo-Json -Depth 10 | Out-File "$OutputRoot\Logs\OneDriveKFM-Report.json" -Force
 
-$anyKfmIssue = $Results | Where-Object { $_.Issues.Count -gt 0 }
-
 if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 10
 } else {
@@ -213,6 +211,6 @@ if ($NonInteractive) {
 }
 #endregion
 
-if ($anyKfmIssue) { exit 1 }
-
+# KFM issues are graded by the orchestrator (primary profile -> FAIL, secondary -> WARN);
+# exit 1 is reserved for crashes per the toolkit I/O contract.
 exit 0
