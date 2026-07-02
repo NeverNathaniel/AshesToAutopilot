@@ -48,8 +48,8 @@ Write-Log "Active profiles: $($Profiles.Count)"
 #region --- Backup Loop ---
 $Results = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath  = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath  = $UserProfile.LocalPath
     $ProfileName  = Split-Path $ProfilePath -Leaf
     $SigSource    = Join-Path $ProfilePath 'AppData\Roaming\Microsoft\Signatures'
 

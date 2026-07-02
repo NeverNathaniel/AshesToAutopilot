@@ -175,16 +175,16 @@ function Search-UnbackedFiles {
 #region --- Main ---
 $AllProfileFindings = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath = $UserProfile.LocalPath
     $ProfileName = Split-Path $ProfilePath -Leaf
-    $SID         = $Profile.SID
+    $SID         = $UserProfile.SID
 
     Write-Log "Scanning profile: $ProfileName"
 
     $HiveLoaded = $false
     try {
-        $HiveLoaded = Mount-UserHive -UserProfile $Profile
+        $HiveLoaded = Mount-UserHive -UserProfile $UserProfile
 
         $odPaths  = Find-OneDrivePaths -ProfilePath $ProfilePath -SID $SID
         $findings = Search-UnbackedFiles -ProfilePath $ProfilePath -OneDrivePaths $odPaths

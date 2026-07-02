@@ -10,7 +10,11 @@
 
 function Write-Log { # Writes timestamped message to log file and console
     param([string]$Message, [string]$Level = 'INFO')
-    "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$Level] $Message" | Add-Content -Path $LogFile -Encoding UTF8
+    # Logging must never kill a run: a transiently locked log file (AV, open handle)
+    # would otherwise propagate through the step engine to the main-loop catch.
+    try {
+        "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$Level] $Message" | Add-Content -Path $LogFile -Encoding UTF8
+    } catch { }
     if (-not $NonInteractive) {
         $color = switch ($Level) { 'WARN' { 'Yellow' } 'ERROR' { 'Red' } default { 'Gray' } }
         Write-Host "  $Message" -ForegroundColor $color
@@ -252,15 +256,15 @@ function Show-RunSummaryInline {
 
     if ($failV.Count -eq 0 -and $warnV.Count -eq 0) {
         Write-Host '  ╔══════════════════════════════════════╗' -ForegroundColor Green
-        Write-Host '  ║   [OK]  READY TO WIPE               ║' -ForegroundColor Green
+        Write-Host '  ║   [OK]  READY TO WIPE                ║' -ForegroundColor Green
         Write-Host '  ╚══════════════════════════════════════╝' -ForegroundColor Green
     } elseif ($failV.Count -eq 0) {
         Write-Host '  ╔══════════════════════════════════════╗' -ForegroundColor Yellow
-        Write-Host ("  ║   [!!]  READY — $($warnV.Count) warning(s)".PadRight(40) + '║') -ForegroundColor Yellow
+        Write-Host ("  ║   [!!]  READY — $($warnV.Count) warning(s)".PadRight(41) + '║') -ForegroundColor Yellow
         Write-Host '  ╚══════════════════════════════════════╝' -ForegroundColor Yellow
     } else {
         Write-Host '  ╔══════════════════════════════════════╗' -ForegroundColor Red
-        Write-Host ("  ║   [XX]  NOT READY — $($failV.Count) issue(s)".PadRight(40) + '║') -ForegroundColor Red
+        Write-Host ("  ║   [XX]  NOT READY — $($failV.Count) issue(s)".PadRight(41) + '║') -ForegroundColor Red
         Write-Host '  ╚══════════════════════════════════════╝' -ForegroundColor Red
         Write-Host ''
         foreach ($fv in $failV) {

@@ -56,10 +56,10 @@ Write-Log "Active profiles: $($Profiles.Count)"
 #region --- Backup Loop ---
 $Results = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath    = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath    = $UserProfile.LocalPath
     $ProfileName    = Split-Path $ProfilePath -Leaf
-    $SID            = $Profile.SID
+    $SID            = $UserProfile.SID
     $LocalAppData   = Join-Path $ProfilePath 'AppData\Local'
     $RoamingAppData = Join-Path $ProfilePath 'AppData\Roaming'
     $Dest           = Join-Path $TaskbarRoot $ProfileName
@@ -82,7 +82,7 @@ foreach ($Profile in $Profiles) {
         if (-not (Test-Path $Dest)) { New-Item -Path $Dest -ItemType Directory -Force | Out-Null }
 
         # Load user registry hive
-        $HiveLoaded = Mount-UserHive -UserProfile $Profile
+        $HiveLoaded = Mount-UserHive -UserProfile $UserProfile
 
         # Files to back up (both Win10 and Win11)
         $filesToCopy = @(
@@ -119,14 +119,16 @@ foreach ($Profile in $Profiles) {
                 if (Test-Path $wp) {
                     $wDest = Join-Path $Dest "Win11_$(Split-Path $wp -Leaf)"
                     if (-not (Test-Path $wDest)) { New-Item $wDest -ItemType Directory -Force | Out-Null }
+                    # foreach statement, not ForEach-Object: the pipeline script block is a
+                    # child scope, so a scalar flag assigned inside it never reaches here.
                     $copiedAny = $false
-                    Get-ChildItem $wp -File -ErrorAction SilentlyContinue | ForEach-Object {
+                    foreach ($file in @(Get-ChildItem $wp -File -ErrorAction SilentlyContinue)) {
                         try {
-                            Copy-Item -LiteralPath $_.FullName -Destination $wDest -Force -ErrorAction Stop
+                            Copy-Item -LiteralPath $file.FullName -Destination $wDest -Force -ErrorAction Stop
                             $copiedAny = $true
                         } catch {
-                            $Result.FailedCopies += $_.FullName
-                            Write-Log "  Failed to copy $($_.FullName): $_" 'WARN'
+                            $Result.FailedCopies += $file.FullName
+                            Write-Log "  Failed to copy $($file.FullName): $_" 'WARN'
                         }
                     }
                     if ($copiedAny) { $Result.FilesBackedUp += $wDest }

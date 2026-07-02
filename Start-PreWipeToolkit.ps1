@@ -8,7 +8,7 @@
 
     Modes:
     - Quick Check  : 12 core steps (fast scan + backup essentials)
-    - Full Prep    : all 32 steps in sequence
+    - Full Prep    : all 27 steps in sequence
     - Single Step  : pick any step by number
     - Custom Run   : enter a comma-separated list of step numbers
 
@@ -62,7 +62,6 @@ if (-not $_principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administr
 
 #region --- Hardware Info ---
 
-$script:TermWidth    = try { [Math]::Min($Host.UI.RawUI.WindowSize.Width, 100) } catch { 80 } # Terminal width for formatting
 $script:ComputerName = $env:COMPUTERNAME # Device hostname
 $script:CurrentUser  = $env:USERNAME # Current user running script
 
@@ -281,11 +280,11 @@ function Invoke-SingleStep { # Menu to run one step interactively
         Show-StepListTable -Title 'RUN SINGLE STEP — SELECT BY NUMBER' # Display all steps
 
         Write-Host '  Enter step number (0 to cancel): ' -ForegroundColor DarkCyan -NoNewline
-        $input = Read-Host # Get user input
-        if ($input -eq '0' -or $input -eq '') { return }
+        $userInput = Read-Host # Get user input ($input is a reserved automatic variable)
+        if ($userInput -eq '0' -or $userInput -eq '') { return }
 
         $num = 0
-        if ([int]::TryParse($input.Trim(), [ref]$num)) {
+        if ([int]::TryParse($userInput.Trim(), [ref]$num)) {
             $step = $script:Steps | Where-Object { $_.Index -eq $num } | Select-Object -First 1
             if ($step) {
                 Invoke-StepInteractive -Step $step
@@ -309,14 +308,15 @@ function Invoke-CustomRun { # Menu to select custom step subset
 
     Write-Host '' # Blank line
     Write-Host '  Enter step numbers separated by commas (e.g. 1,3,11,12)' -ForegroundColor Gray
+    Write-Host '  Steps always run in ascending index order.' -ForegroundColor DarkGray
     Write-Host '  Enter 0 or leave blank to cancel.' -ForegroundColor DarkGray
     Write-Host '' # Blank line
     Write-Host '  Steps: ' -ForegroundColor DarkCyan -NoNewline
-    $input = Read-Host # Get user input
+    $userInput = Read-Host # Get user input ($input is a reserved automatic variable)
 
-    if ($input -eq '0' -or $input -eq '') { return }
+    if ($userInput -eq '0' -or $userInput -eq '') { return }
 
-    $indices = $input -split '[,\s]+' | ForEach-Object {
+    $indices = $userInput -split '[,\s]+' | ForEach-Object {
         $n = 0
         if ([int]::TryParse($_.Trim(), [ref]$n)) { $n }
     } | Where-Object { $_ -gt 0 } | Select-Object -Unique | Sort-Object

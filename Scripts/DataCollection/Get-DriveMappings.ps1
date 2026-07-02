@@ -45,16 +45,16 @@ Write-Log "Active profiles: $($Profiles.Count)"
 #region --- Drive Mapping Enumeration ---
 $AllResults = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath = $UserProfile.LocalPath
     $ProfileName = Split-Path $ProfilePath -Leaf
-    $SID         = $Profile.SID
+    $SID         = $UserProfile.SID
 
     Write-Log "Checking drive mappings for: $ProfileName"
 
     $HiveLoaded = $false
     try {
-        $HiveLoaded = Mount-UserHive -UserProfile $Profile
+        $HiveLoaded = Mount-UserHive -UserProfile $UserProfile
 
         $NetworkKey = "Registry::HKEY_USERS\$SID\Network"
 

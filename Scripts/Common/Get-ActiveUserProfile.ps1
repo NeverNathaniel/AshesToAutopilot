@@ -30,10 +30,6 @@ function Get-ActiveUserProfile {
             Write-Log "Skipping system SID: $($p.SID)" 'INFO'
             continue
         }
-        if ($p.SID -match '^S-1-5-(18|19|20)$') {
-            Write-Log "Skipping system SID (pattern): $($p.SID)" 'INFO'
-            continue
-        }
 
         $folderName = Split-Path -Path $p.LocalPath -Leaf
         if ($excludedNames -contains $folderName.ToLowerInvariant()) {

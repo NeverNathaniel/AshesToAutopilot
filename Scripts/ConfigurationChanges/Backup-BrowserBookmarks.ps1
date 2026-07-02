@@ -192,8 +192,8 @@ function Backup-FirefoxBrowser {
 #region --- Main Loop ---
 $AllResults = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath = $UserProfile.LocalPath
     $ProfileName = Split-Path $ProfilePath -Leaf
     $LocalAppData = Join-Path $ProfilePath 'AppData\Local'
     $RoamingAppData = Join-Path $ProfilePath 'AppData\Roaming'

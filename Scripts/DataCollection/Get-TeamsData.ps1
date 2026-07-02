@@ -90,8 +90,8 @@ try {
 
 Write-Log "Active profiles to inspect: $($Profiles.Count)"
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath = $UserProfile.LocalPath
     $ProfileName = Split-Path -Path $ProfilePath -Leaf
     Write-Log "Inspecting Teams data for: $ProfileName"
 

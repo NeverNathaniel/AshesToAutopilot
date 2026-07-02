@@ -58,7 +58,7 @@ git archive --format=zip --output=AshesToAutopilot.zip HEAD
 
 It defines `$script:Steps` — an array of 27 `PSCustomObject` entries, each with `Index`, `Phase`, `DisplayName`, `ScriptPath`, and `Status`. The main loop maps key presses to workflow functions (`Invoke-QuickCheck`, `Invoke-FullPrep`, `Invoke-SingleStep`, `Invoke-CustomRun`), all of which ultimately call `Invoke-RunSteps` in `Toolkit-Execution.ps1`.
 
-`Invoke-StepCapture` (in `Toolkit-Execution.ps1`) runs each script as a child process with `-NonInteractive`, captures stdout as a string, parses it as JSON, and evaluates a verdict independently of the exit code.
+`Invoke-StepCapture` (in `Toolkit-Execution.ps1`) invokes each script in-process via the call operator with `-NonInteractive` (no child process — a step that calls `[Environment]::Exit()` would terminate the whole toolkit), captures the success stream as a string, parses it as JSON, and evaluates a verdict independently of the exit code.
 
 ### Script I/O Contract
 
@@ -67,9 +67,9 @@ Every script in `Scripts/` follows this pattern:
 - Accepts `-NonInteractive` as a switch parameter
 - Emits structured JSON to stdout (always for data-collection scripts; required for orchestrator use)
 - Returns exit code `0` for success or non-blocking warnings, `1` for crashes or blocking failures
-- JSON output includes a `Verdict` field: `PASS`, `WARN`, or `FAIL`
+- Writes its JSON to `Logs\<Script-BaseName>-Report.json` (single-step runs re-read this file)
 
-The orchestrator evaluates `Verdict` from the parsed JSON, not from the exit code alone. Exit code determines `DONE` vs `FAIL` status; `Verdict` drives the color-coded display and report.
+Scripts do NOT emit a `Verdict` field. Verdicts (`PASS`/`WARN`/`FAIL`) are computed centrally by per-script mappings in `Get-StepVerdict` (`Toolkit-Report.ps1`) from the parsed JSON — a new script needs a mapping case there, or its results silently default to PASS. Exit code determines `DONE` vs `FAIL` status; the verdict drives the color-coded display and report.
 
 ### Verdict Semantics
 
@@ -93,9 +93,9 @@ Steps are numbered 1–32 with intentional gaps (indices 24–27 and 30 are abse
 |------|----------|
 | `Initialize-Toolkit.ps1` | `Write-Log`, `Write-ErrorLog`, admin elevation check |
 | `Get-ActiveUserProfile.ps1` | User profile enumeration (filters system/service accounts and profiles inactive >30 days); registry hive mount/unmount for reading offline `NTUSER.DAT` |
-| `Toolkit-Execution.ps1` | `Invoke-RunSteps`, `Invoke-StepCapture`, `Invoke-StepInteractive`, `Get-StepVerdict`, `Get-StepSummary` |
+| `Toolkit-Execution.ps1` | `Invoke-RunSteps`, `Invoke-StepCapture`, `Invoke-StepInteractive` |
 | `Toolkit-UI.ps1` | ASCII banners, menu rendering, `Read-MenuKey`, `Show-StepListTable`, `Show-MainMenu`, `Show-SessionSummary` |
-| `Toolkit-Report.ps1` | HTML report generation, `Export-SessionReport`, JSON/TXT session export |
+| `Toolkit-Report.ps1` | `Get-StepVerdict`, `Get-StepSummary`, HTML report generation, `Export-SessionReport`, JSON/TXT session export |
 | `Find-DellCommandTool.ps1` | Locates Dell Command Update and Dell Command Configure executables |
 
 ### Script Organization by Phase
@@ -103,13 +103,13 @@ Steps are numbered 1–32 with intentional gaps (indices 24–27 and 30 are abse
 Scripts are grouped into four subdirectories matching the `Phase` field on each step:
 
 - **`DataCollection/`** — 10 read-only inventory scripts; always emit JSON to stdout
-- **`ConfigurationChecks/`** — 7 read-only status checks; return JSON with `Verdict`
-- **`ConfigurationChanges/`** — 13 scripts that back up user data or modify settings (BitLocker, WoL, Dell updates, backups)
-- **`AutopilotReadiness/`** — 5 orchestrated steps for TPM/UEFI validation and device registration; plus `Report-AutopilotReadinessToHudu.ps1` which is run manually post-wipe and requires the `HuduAPI` module
+- **`ConfigurationChecks/`** — 4 read-only status checks (OneDrive KFM/sync, storage mode, WinRE)
+- **`ConfigurationChanges/`** — 10 scripts that back up user data or modify settings (BitLocker, WoL, Dell updates, backups)
+- **`AutopilotReadiness/`** — 4 orchestrated steps for TPM/UEFI validation and device registration; plus `Report-AutopilotReadinessToHudu.ps1` which is run manually post-wipe and requires the `HuduAPI` module
 
 ### Dell-Specific Behavior
 
-`Test-BiosVersion.ps1`, `Test-DriverStatus.ps1`, and the `Invoke-BiosUpdate.ps1`/`Invoke-DriverUpdate.ps1` wrappers all depend on Dell Command Update and Dell Command Configure. `Find-DellCommandTool.ps1` handles discovery; step 25 (`Install-DellCommandTools.ps1`) downloads and installs them on demand. `Test-AutopilotReadiness.ps1` contains explicit detection logic for known-problematic TPM manufacturers (Infineon, STMicro, Nuvoton).
+`Invoke-BiosUpdate.ps1` and `Invoke-DriverUpdate.ps1` depend on Dell Command Update and Dell Command Configure. `Find-DellCommandTool.ps1` handles discovery; `Install-DellCommandTools.ps1` (not a menu step — invoked on demand by the two updaters) downloads and installs them. `Test-AutopilotReadiness.ps1` contains explicit detection logic for known-problematic TPM manufacturers (Infineon, STMicro, Nuvoton).
 
 ### Output Location (on the Windows target device)
 
@@ -119,8 +119,8 @@ C:\PreWipeOutput\
 ├── PreWipeReport_<PC>_<ts>.html  # HTML report generated after each run
 ├── PreWipeReport_<PC>_<ts>.json  # JSON session export
 ├── PreWipeReport_<PC>_<ts>.txt   # Plain text export
+├── errors.log                    # Aggregated errors from step scripts
 └── Logs\
-    ├── *.log                     # Per-script run logs
-    ├── *.json                    # Structured JSON output per script
-    └── errors.log                # Aggregated errors
+    ├── *.log                     # Per-script run logs (incl. Start-PreWipeToolkit_Errors_<date>.log)
+    └── *-Report.json             # Structured JSON output per script
 ```

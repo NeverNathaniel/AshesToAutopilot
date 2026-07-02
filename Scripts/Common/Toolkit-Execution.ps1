@@ -4,10 +4,13 @@
 
 .DESCRIPTION
     Dot-sourced by the orchestrator at startup. Provides Invoke-RunSteps,
-    Invoke-StepCapture, and Invoke-StepInteractive. Runs each step as a child
-    process with -NonInteractive, captures JSON output, and evaluates verdicts
-    independently of exit code. Not intended to be run directly.
+    Invoke-StepCapture, and Invoke-StepInteractive. Invokes each step in-process
+    via the call operator with -NonInteractive, captures JSON from the success
+    stream, and evaluates verdicts independently of exit code. Not intended to
+    be run directly.
 #>
+
+#region --- Step Runners ---
 
 function Invoke-StepCapture { # Executes step and captures output
     param([PSCustomObject]$Step) # Step object to execute
@@ -187,7 +190,7 @@ function Invoke-RunSteps { # Executes batch of steps and collects results
             VerdictReason = $result.VerdictReason
         })
 
-        if ($i -lt $total) { Start-Sleep -Seconds 2 }
+        if ($i -lt $total) { Start-Sleep -Milliseconds 500 } # brief visual pacing between steps
     }
 
     $resultArray = $runResults.ToArray() # Convert to array

@@ -51,7 +51,6 @@ function Get-StepSummary { # Generates human-readable summary from step output
             '*Get-DownloadsSize*' {
                 if (-not $Parsed.Results) { return 'No profiles' }
                 $totalBytes = ($Parsed.Results | Measure-Object -Property SizeBytes -Sum).Sum
-                $totalFiles = ($Parsed.Results | Measure-Object -Property FileCount -Sum).Sum
                 $sizeStr = if ($totalBytes -gt 1GB) { '{0:N1} GB' -f ($totalBytes / 1GB) } `
                            elseif ($totalBytes -gt 1MB) { '{0:N0} MB' -f ($totalBytes / 1MB) } `
                            else { '{0:N0} KB' -f ($totalBytes / 1KB) }

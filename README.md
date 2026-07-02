@@ -167,10 +167,10 @@ C:\PreWipeOutput\
 ├── PreWipeReport_<PC>_<ts>.html  # HTML report generated after each run
 ├── PreWipeReport_<PC>_<ts>.json  # JSON session export
 ├── PreWipeReport_<PC>_<ts>.txt   # Plain text session export
+├── errors.log                    # Aggregated errors from step scripts
 └── Logs\
     ├── *.log                     # Per-script run logs
-    ├── *.json                    # Structured output from each script
-    └── errors.log                # Aggregated error log
+    └── *-Report.json             # Structured output from each script
 ```
 
 ---

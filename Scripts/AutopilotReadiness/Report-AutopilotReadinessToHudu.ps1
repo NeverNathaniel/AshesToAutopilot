@@ -223,7 +223,6 @@ $assignmentReport = Get-JsonReport 'Get-AutopilotAssignment-Report.json'
 $summaryReport    = Get-JsonReport 'Get-PreWipeSummary-Report.json'
 $bitlockerReport  = Get-JsonReport 'Test-BitLockerEscrow-Report.json'
 $oneDriveReport   = Get-JsonReport 'Test-OneDriveSyncStatus-Report.json'
-$healthReport     = Get-JsonReport 'Get-DeviceHealth-Report.json'
 #endregion
 
 #region --- Collect Device Identity ---

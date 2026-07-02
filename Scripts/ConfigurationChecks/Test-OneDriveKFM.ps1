@@ -50,10 +50,10 @@ Write-Log "Active profiles to check: $($Profiles.Count)"
 #region --- KFM / Sync Check ---
 $Results = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath = $UserProfile.LocalPath
     $ProfileName = Split-Path $ProfilePath -Leaf
-    $SID         = $Profile.SID
+    $SID         = $UserProfile.SID
 
     Write-Log "Checking OneDrive KFM for profile: $ProfileName ($ProfilePath)"
 
@@ -71,7 +71,7 @@ foreach ($Profile in $Profiles) {
 
     try {
         # Load the user's registry hive if not already loaded
-        $HiveLoaded = Mount-UserHive -UserProfile $Profile
+        $HiveLoaded = Mount-UserHive -UserProfile $UserProfile
         if (-not $HiveLoaded -and -not (Test-Path "Registry::HKEY_USERS\$SID")) {
             Write-Log "No NTUSER.DAT found for $ProfileName, skipping registry checks." 'WARN'
             $ProfileResult.Issues += 'No NTUSER.DAT found'
@@ -86,26 +86,18 @@ foreach ($Profile in $Profiles) {
 
         $ODAccountsKey = "Registry::HKEY_USERS\$SID\Software\Microsoft\OneDrive\Accounts"
 
-        # Known folder GUIDs for KFM
-        $KnownFolderGUIDs = @{
-            Desktop   = '{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}'
-            Documents = '{FDD39AD0-238F-46AF-ADB4-6C85480369C7}'
-            Pictures  = '{33E28130-4E1E-4676-835A-98395C3BC3BB}'
-        }
-
-        # Find OneDrive path from registry
-        $ODPath = $null
+        # Find ALL OneDrive account folders — a user can have several accounts
+        # (old tenant + new tenant, personal + business) and KFM may target any of
+        # them; comparing against only the first produced false NotKFM verdicts.
+        $ODPaths = @()
         if (Test-Path $ODAccountsKey) {
             $accounts = Get-ChildItem $ODAccountsKey -ErrorAction SilentlyContinue
             foreach ($acct in $accounts) {
                 $props = Get-ItemProperty $acct.PSPath -ErrorAction SilentlyContinue
-                if ($props.UserFolder) {
-                    $ODPath = $props.UserFolder
-                    break
-                }
+                if ($props.UserFolder) { $ODPaths += $props.UserFolder }
             }
         }
-        $ProfileResult.OneDrivePath = $ODPath
+        $ProfileResult.OneDrivePath = if ($ODPaths.Count -gt 0) { $ODPaths -join '; ' } else { $null }
 
         # Check KFM by examining if known folder shell locations point into OneDrive
         $UserShellFoldersKey = "Registry::HKEY_USERS\$SID\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
@@ -122,7 +114,7 @@ foreach ($Profile in $Profiles) {
             'My Pictures' = 'Pictures'
         }
 
-        if (-not $ODPath) {
+        if ($ODPaths.Count -eq 0) {
             # OneDrive not configured — KFM status is N/A, not "not set up"
             $ProfileResult.KFM_Desktop   = 'OneDriveNotConfigured'
             $ProfileResult.KFM_Documents = 'OneDriveNotConfigured'
@@ -132,7 +124,17 @@ foreach ($Profile in $Profiles) {
             foreach ($kfmProp in $CheckFolders.Keys) {
                 $regName   = $CheckFolders[$kfmProp]
                 $folderVal = $shellProps.$regName
-                if ($null -ne $folderVal -and $folderVal -like "$ODPath*") {
+                # Separator-anchored StartsWith against every account folder: -like
+                # would treat [] in the OneDrive path as wildcard sets, and matching
+                # only one account misses KFM targeting a second account.
+                $inOneDrive = $false
+                if ($null -ne $folderVal) {
+                    foreach ($odp in $ODPaths) {
+                        if ($folderVal.StartsWith("$odp\", [System.StringComparison]::OrdinalIgnoreCase) -or
+                            $folderVal.Equals($odp, [System.StringComparison]::OrdinalIgnoreCase)) { $inOneDrive = $true; break }
+                    }
+                }
+                if ($inOneDrive) {
                     $ProfileResult.$kfmProp = 'Enabled'
                 } elseif ($null -ne $folderVal) {
                     $ProfileResult.$kfmProp = "NotKFM ($folderVal)"

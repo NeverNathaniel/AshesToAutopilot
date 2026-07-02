@@ -62,10 +62,10 @@ try {
 #region --- Per-Profile Sync Check ---
 $Results = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath = $UserProfile.LocalPath
     $ProfileName = Split-Path $ProfilePath -Leaf
-    $SID         = $Profile.SID
+    $SID         = $UserProfile.SID
 
     Write-Log "Checking OneDrive sync status for: $ProfileName"
 
@@ -83,7 +83,7 @@ foreach ($Profile in $Profiles) {
 
     $HiveLoaded = $false
     try {
-        $HiveLoaded = Mount-UserHive -UserProfile $Profile
+        $HiveLoaded = Mount-UserHive -UserProfile $UserProfile
         if (-not $HiveLoaded -and -not (Test-Path "Registry::HKEY_USERS\$SID")) {
             $ProfileResult.Issues += 'No NTUSER.DAT found'
             $Results += $ProfileResult

@@ -59,10 +59,10 @@ Write-Log "Active profiles: $($Profiles.Count)"
 #region --- Backup Loop ---
 $Results = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath = $UserProfile.LocalPath
     $ProfileName = Split-Path $ProfilePath -Leaf
-    $SID         = $Profile.SID
+    $SID         = $UserProfile.SID
 
     Write-Log "Checking desktop background for: $ProfileName"
 
@@ -81,7 +81,7 @@ foreach ($Profile in $Profiles) {
                          # the previous profile's $true driving this finally block
     try {
         # Load user hive
-        $HiveLoaded = Mount-UserHive -UserProfile $Profile
+        $HiveLoaded = Mount-UserHive -UserProfile $UserProfile
         if (-not $HiveLoaded -and -not (Test-Path "Registry::HKEY_USERS\$SID")) {
             $Result.Skipped    = $true
             $Result.SkipReason = 'No NTUSER.DAT'

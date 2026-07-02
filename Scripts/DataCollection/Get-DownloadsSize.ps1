@@ -55,8 +55,8 @@ Write-Log "Active profiles to check: $($Profiles.Count)"
 #region --- Size Calculation ---
 $Results = @()
 
-foreach ($Profile in $Profiles) {
-    $ProfilePath  = $Profile.LocalPath
+foreach ($UserProfile in $Profiles) {
+    $ProfilePath  = $UserProfile.LocalPath
     $ProfileName  = Split-Path $ProfilePath -Leaf
     $DownloadsDir = Join-Path $ProfilePath 'Downloads'
 
