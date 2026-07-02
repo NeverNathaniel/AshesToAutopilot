@@ -98,7 +98,8 @@ if ($NonInteractive) {
     $installedColor = if ($Result.WinREInstalled) { 'Green' } else { 'Red' }
     Write-Host "  WinRE Enabled:   $($Result.WinREEnabled)" -ForegroundColor $enabledColor
     Write-Host "  WinRE Installed: $($Result.WinREInstalled)" -ForegroundColor $installedColor
-    Write-Host "  WinRE Location:  $($Result.WinRELocation ?? 'Not found')"
+    $locDisplay = if ($Result.WinRELocation) { $Result.WinRELocation } else { 'Not found' }
+    Write-Host "  WinRE Location:  $locDisplay"
     if (-not $Result.WinREEnabled -or -not $Result.WinREInstalled) {
         Write-Host ""
         Write-Host "  WARNING: WinRE is not fully configured. Run 'reagentc /enable' to attempt repair." -ForegroundColor Yellow
