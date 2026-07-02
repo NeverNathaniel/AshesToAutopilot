@@ -151,7 +151,7 @@ $Summary = [PSCustomObject]@{
     Results     = $Results
 }
 
-$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\BitLockerEscrow-Report.json" -Force
+$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Test-BitLockerEscrow-Report.json" -Force
 
 if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 5
@@ -172,7 +172,7 @@ if ($NonInteractive) {
         }
     }
     Write-Host ""
-    Write-Host "Report: $OutputRoot\Logs\BitLockerEscrow-Report.json"
+    Write-Host "Report: $OutputRoot\Logs\Test-BitLockerEscrow-Report.json"
     Write-Host ""
 }
 #endregion

@@ -219,13 +219,13 @@ $Summary = [PSCustomObject]@{
     Results   = $Results
 }
 
-$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\DownloadsSize.json" -Force
+$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Get-DownloadsSize-Report.json" -Force
 
 if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 5
 } else {
     Write-Host ""
-    Write-Host "Report saved: $OutputRoot\Logs\DownloadsSize.json"
+    Write-Host "Report saved: $OutputRoot\Logs\Get-DownloadsSize-Report.json"
     Write-Host ""
 }
 #endregion

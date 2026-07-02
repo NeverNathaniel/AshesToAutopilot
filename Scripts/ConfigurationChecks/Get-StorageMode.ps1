@@ -144,7 +144,7 @@ try {
 #endregion
 
 #region --- Output ---
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\StorageMode-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Get-StorageMode-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -163,7 +163,7 @@ if ($NonInteractive) {
         Write-Host "  Notes: $($Result.Notes -join '; ')"
     }
     Write-Host ""
-    Write-Host "Report: $OutputRoot\Logs\StorageMode-Report.json"
+    Write-Host "Report: $OutputRoot\Logs\Get-StorageMode-Report.json"
     Write-Host ""
 }
 #endregion

@@ -20,7 +20,7 @@
     - None (aggregates toolkit's own output files)
 
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\PreWipeSummary-Report.json
+    Output:   C:\PreWipeOutput\Logs\Get-PreWipeSummary-Report.json
 #>
 
 [CmdletBinding()]
@@ -39,34 +39,34 @@ if (-not (Test-AdminElevation)) { exit 1 }
 # Map each expected JSON file to its phase, script name, and how to extract status
 $ScriptMap = [ordered]@{
     # Scan & Check
-    'DellCommandTools-Report.json'                  = @{ Phase = 'ScanCheck';     Script = 'Install-DellCommandTools';              StatusPath = 'DCU.Success' }
-    'WindowsProductKey-Report.json'                 = @{ Phase = 'ScanCheck';     Script = 'Get-WindowsProductKey';                 StatusPath = 'HasOEMKey' }
-    'OneDriveKFM-Report.json'                       = @{ Phase = 'ScanCheck';     Script = 'Test-OneDriveKFM';                      StatusPath = 'ProfilesChecked' }
-    'OneDriveSyncStatus-Report.json'                = @{ Phase = 'ScanCheck';     Script = 'Test-OneDriveSyncStatus';               StatusPath = 'OverallVerdict' }
-    'DownloadsSize.json'                            = @{ Phase = 'ScanCheck';     Script = 'Get-DownloadsSize';                     StatusPath = 'ProfilesChecked' }
+    'Install-DellCommandTools-Report.json'                  = @{ Phase = 'ScanCheck';     Script = 'Install-DellCommandTools';              StatusPath = 'DCU.Success' }
+    'Get-WindowsProductKey-Report.json'                 = @{ Phase = 'ScanCheck';     Script = 'Get-WindowsProductKey';                 StatusPath = 'HasOEMKey' }
+    'Test-OneDriveKFM-Report.json'                       = @{ Phase = 'ScanCheck';     Script = 'Test-OneDriveKFM';                      StatusPath = 'ProfilesChecked' }
+    'Test-OneDriveSyncStatus-Report.json'                = @{ Phase = 'ScanCheck';     Script = 'Test-OneDriveSyncStatus';               StatusPath = 'OverallVerdict' }
+    'Get-DownloadsSize-Report.json'                            = @{ Phase = 'ScanCheck';     Script = 'Get-DownloadsSize';                     StatusPath = 'ProfilesChecked' }
     'Find-UnbackedData-Report.json'                 = @{ Phase = 'ScanCheck';     Script = 'Find-UnbackedData';                     StatusPath = 'ProfilesChecked' }
-    'DriveMappings-Report.json'                     = @{ Phase = 'ScanCheck';     Script = 'Get-DriveMappings';                     StatusPath = 'ProfilesChecked' }
-    'InstalledApplications-Report.json'             = @{ Phase = 'ScanCheck';     Script = 'Get-InstalledApplications';             StatusPath = 'TotalCount' }
-    'StorageMode-Report.json'                       = @{ Phase = 'ScanCheck';     Script = 'Get-StorageMode';                       StatusPath = 'StorageMode' }
-    'WinRE-Status.json'                             = @{ Phase = 'ScanCheck';     Script = 'Test-WinRE';                            StatusPath = 'WinREEnabled' }
-    'Printers-Report.json'                          = @{ Phase = 'ScanCheck';     Script = 'Get-Printers';                          StatusPath = 'TotalPrinters' }
-    'DeviceHealth-Report.json'                      = @{ Phase = 'ScanCheck';     Script = 'Get-DeviceHealth';                      StatusPath = 'OverallStatus' }
+    'Get-DriveMappings-Report.json'                     = @{ Phase = 'ScanCheck';     Script = 'Get-DriveMappings';                     StatusPath = 'ProfilesChecked' }
+    'Get-InstalledApplications-Report.json'             = @{ Phase = 'ScanCheck';     Script = 'Get-InstalledApplications';             StatusPath = 'TotalCount' }
+    'Get-StorageMode-Report.json'                       = @{ Phase = 'ScanCheck';     Script = 'Get-StorageMode';                       StatusPath = 'StorageMode' }
+    'Test-WinRE-Report.json'                             = @{ Phase = 'ScanCheck';     Script = 'Test-WinRE';                            StatusPath = 'WinREEnabled' }
+    'Get-Printers-Report.json'                          = @{ Phase = 'ScanCheck';     Script = 'Get-Printers';                          StatusPath = 'TotalPrinters' }
+    'Get-DeviceHealth-Report.json'                      = @{ Phase = 'ScanCheck';     Script = 'Get-DeviceHealth';                      StatusPath = 'OverallStatus' }
     # Backup
-    'BrowserBookmarks-Report.json'                  = @{ Phase = 'Backup';        Script = 'Backup-BrowserBookmarks';               StatusPath = 'TotalBackedUp' }
-    'OutlookSignatures-Report.json'                 = @{ Phase = 'Backup';        Script = 'Backup-OutlookSignatures';              StatusPath = 'ProfilesChecked' }
-    'TaskbarLayout-Report.json'                     = @{ Phase = 'Backup';        Script = 'Backup-TaskbarLayout';                  StatusPath = 'ProfilesChecked' }
-    'DesktopBackground-Report.json'                 = @{ Phase = 'Backup';        Script = 'Backup-DesktopBackground';              StatusPath = 'ProfilesChecked' }
-    'WiFiProfiles-Report.json'                      = @{ Phase = 'Backup';        Script = 'Backup-WiFiProfiles';                   StatusPath = 'ExportedCount' }
+    'Backup-BrowserBookmarks-Report.json'                  = @{ Phase = 'Backup';        Script = 'Backup-BrowserBookmarks';               StatusPath = 'TotalBackedUp' }
+    'Backup-OutlookSignatures-Report.json'                 = @{ Phase = 'Backup';        Script = 'Backup-OutlookSignatures';              StatusPath = 'ProfilesChecked' }
+    'Backup-TaskbarLayout-Report.json'                     = @{ Phase = 'Backup';        Script = 'Backup-TaskbarLayout';                  StatusPath = 'ProfilesChecked' }
+    'Backup-DesktopBackground-Report.json'                 = @{ Phase = 'Backup';        Script = 'Backup-DesktopBackground';              StatusPath = 'ProfilesChecked' }
+    'Backup-WiFiProfiles-Report.json'                      = @{ Phase = 'Backup';        Script = 'Backup-WiFiProfiles';                   StatusPath = 'ExportedCount' }
     # Configure
-    'BitLockerEscrow-Report.json'                   = @{ Phase = 'Configure';     Script = 'Test-BitLockerEscrow';                  StatusPath = 'AllEscrowed' }
-    'EnableWakeOnLan-Report.json'                   = @{ Phase = 'Configure';     Script = 'Enable-WakeOnLan';                      StatusPath = 'Success' }
+    'Test-BitLockerEscrow-Report.json'                   = @{ Phase = 'Configure';     Script = 'Test-BitLockerEscrow';                  StatusPath = 'AllEscrowed' }
+    'Enable-WakeOnLan-Report.json'                   = @{ Phase = 'Configure';     Script = 'Enable-WakeOnLan';                      StatusPath = 'Success' }
     # Install & Update
-    'BiosUpdate-Report.json'                        = @{ Phase = 'InstallUpdate'; Script = 'Invoke-BiosUpdate';                     StatusPath = 'Success' }
-    'DriverUpdate-Report.json'                      = @{ Phase = 'InstallUpdate'; Script = 'Invoke-DriverUpdate';                   StatusPath = 'Success' }
+    'Invoke-BiosUpdate-Report.json'                        = @{ Phase = 'InstallUpdate'; Script = 'Invoke-BiosUpdate';                     StatusPath = 'Success' }
+    'Invoke-DriverUpdate-Report.json'                      = @{ Phase = 'InstallUpdate'; Script = 'Invoke-DriverUpdate';                   StatusPath = 'Success' }
     # Autopilot
-    'AutopilotReadiness-Report.json'                = @{ Phase = 'Autopilot';     Script = 'Test-AutopilotReadiness';               StatusPath = 'OverallStatus' }
+    'Test-AutopilotReadiness-Report.json'                = @{ Phase = 'Autopilot';     Script = 'Test-AutopilotReadiness';               StatusPath = 'OverallStatus' }
     'Register-AutopilotDeviceCommunity-Report.json' = @{ Phase = 'Autopilot';     Script = 'Register-AutopilotDeviceCommunity';     StatusPath = 'Success' }
-    'AutopilotAssignment-Report.json'               = @{ Phase = 'Autopilot';     Script = 'Get-AutopilotAssignment';               StatusPath = 'AssignedUser' }
+    'Get-AutopilotAssignment-Report.json'               = @{ Phase = 'Autopilot';     Script = 'Get-AutopilotAssignment';               StatusPath = 'AssignedUser' }
 }
 #endregion
 
@@ -160,7 +160,7 @@ Write-Log "Checking for wipe blockers..."
 $blEntry = $ScriptResults | Where-Object { $_.Script -eq 'Test-BitLockerEscrow' }
 if ($blEntry -and $blEntry.Found) {
     $blJson = $null
-    try { $blJson = Get-Content (Join-Path $LogDir 'BitLockerEscrow-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
+    try { $blJson = Get-Content (Join-Path $LogDir 'Test-BitLockerEscrow-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
     if ($null -eq $blJson -or $blJson.AllEscrowed -ne $true) {
         $Blockers += "BitLocker escrow is unverified or failed - resolve before wipe"
     }
@@ -172,7 +172,7 @@ if ($blEntry -and $blEntry.Found) {
 $syncEntry = $ScriptResults | Where-Object { $_.Script -eq 'Test-OneDriveSyncStatus' }
 if ($syncEntry -and $syncEntry.Found) {
     $syncJson = $null
-    try { $syncJson = Get-Content (Join-Path $LogDir 'OneDriveSyncStatus-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
+    try { $syncJson = Get-Content (Join-Path $LogDir 'Test-OneDriveSyncStatus-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
     if ($null -eq $syncJson) {
         $Blockers += "OneDrive sync report could not be parsed - re-run the sync check"
     } elseif ($syncJson.OverallVerdict -eq 'NO_PROFILES') {
@@ -191,7 +191,7 @@ if ($syncEntry -and $syncEntry.Found) {
 $readyEntry = $ScriptResults | Where-Object { $_.Script -eq 'Test-AutopilotReadiness' }
 if ($readyEntry -and $readyEntry.Found) {
     $readyJson = $null
-    try { $readyJson = Get-Content (Join-Path $LogDir 'AutopilotReadiness-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
+    try { $readyJson = Get-Content (Join-Path $LogDir 'Test-AutopilotReadiness-Report.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
     if ($null -eq $readyJson) {
         $Blockers += "Autopilot readiness report could not be parsed - re-run the readiness check"
     } elseif ($readyJson.OverallStatus -eq 'NOT READY') {
@@ -211,7 +211,7 @@ if (-not $pkEntry -or -not $pkEntry.Found) {
 # Warning: Device health issues
 $healthEntry = $ScriptResults | Where-Object { $_.Script -eq 'Get-DeviceHealth' }
 if ($healthEntry -and $healthEntry.Found) {
-    $healthJson = Get-Content (Join-Path $LogDir 'DeviceHealth-Report.json') -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+    $healthJson = Get-Content (Join-Path $LogDir 'Get-DeviceHealth-Report.json') -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
     if ($healthJson -and $healthJson.OverallStatus -eq 'WARNINGS') {
         $Blockers += "Device health warnings: $($healthJson.Warnings -join '; ')"
     }
@@ -282,7 +282,7 @@ $Result = [PSCustomObject]@{
     ScriptDetails = $ScriptResults
 }
 
-$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\PreWipeSummary-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\Get-PreWipeSummary-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -359,7 +359,7 @@ if ($NonInteractive) {
     }
 
     Write-Host ""
-    Write-Host "Full report: $LogDir\PreWipeSummary-Report.json"
+    Write-Host "Full report: $LogDir\Get-PreWipeSummary-Report.json"
     Write-Host ""
 }
 #endregion

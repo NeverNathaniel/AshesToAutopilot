@@ -161,7 +161,7 @@ $Summary = [PSCustomObject]@{
     Results   = $Results
 }
 
-$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\DesktopBackground-Report.json" -Force
+$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Backup-DesktopBackground-Report.json" -Force
 
 if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 5

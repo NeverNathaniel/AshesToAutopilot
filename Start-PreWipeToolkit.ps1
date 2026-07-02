@@ -364,6 +364,9 @@ function Invoke-ResetSession { # Clears all progress and deletes session file
     foreach ($step in $script:Steps) { $step.Status = 'not-run' } # Reset all steps
     $script:Session = Initialize-Session # Create new session
     if (Test-Path $SessionFile) { Remove-Item $SessionFile -Force } # Delete session file
+    # Clear per-step report JSONs too — stale reports from a previous device/tech
+    # must not feed verdicts or the pre-wipe summary after a reset.
+    Remove-Item "$LogDir\*-Report.json" -Force -ErrorAction SilentlyContinue
 
     Write-Host ''
     Write-Host '  Session reset. All steps marked as not-run.' -ForegroundColor Green

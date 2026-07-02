@@ -87,7 +87,7 @@ try {
 #endregion
 
 #region --- Output ---
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\WinRE-Status.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Test-WinRE-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -106,7 +106,7 @@ if ($NonInteractive) {
         Write-Host "  This script does not attempt repair - manual action required." -ForegroundColor Yellow
     }
     Write-Host ""
-    Write-Host "Report: $OutputRoot\Logs\WinRE-Status.json"
+    Write-Host "Report: $OutputRoot\Logs\Test-WinRE-Report.json"
     Write-Host ""
 }
 #endregion

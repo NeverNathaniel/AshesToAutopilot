@@ -19,7 +19,7 @@
 .NOTES
     Replaces the separate Test-WakeOnLan and Set-WakeOnLan steps.
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\EnableWakeOnLan-Report.json
+    Output:   C:\PreWipeOutput\Logs\Enable-WakeOnLan-Report.json
     NOTE: BIOS changes via DCC may require a cold boot to take effect.
 #>
 
@@ -185,7 +185,7 @@ $Result = [PSCustomObject]@{
 #endregion
 
 #region --- Output ---
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\EnableWakeOnLan-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Enable-WakeOnLan-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5

@@ -91,6 +91,7 @@ function Invoke-StepInteractive { # Runs step interactively with output
 
     $global:LASTEXITCODE = 0 # Reset engine exit code (a plain assignment here would create a function-local shadow)
     $exitCode = 0
+    $stepStart = Get-Date # Freshness gate: only report JSON written by THIS run counts
     try {
         & $fullPath
         $exitCode = if ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
@@ -113,11 +114,12 @@ function Invoke-StepInteractive { # Runs step interactively with output
         Write-Host "  [FAIL] Exited with code $exitCode — review output above." -ForegroundColor Red
     }
 
-    # Read JSON and derive verdict for single-step runs
+    # Read JSON and derive verdict for single-step runs. A report left over from a
+    # previous run cannot describe THIS run — only trust files written after stepStart.
     $scriptBaseName = [System.IO.Path]::GetFileNameWithoutExtension($Step.ScriptPath)
     $jsonPath = Join-Path $LogDir "$scriptBaseName-Report.json"
     $stepVerdict = $null; $stepVerdictReason = $null
-    if (Test-Path $jsonPath) {
+    if ((Test-Path $jsonPath) -and ((Get-Item $jsonPath).LastWriteTime -ge $stepStart)) {
         try {
             $parsed = Get-Content $jsonPath -Raw | ConvertFrom-Json
             $vResult = Get-StepVerdict -Parsed $parsed -ScriptFile $Step.ScriptPath -Status $Step.Status

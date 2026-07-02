@@ -21,7 +21,7 @@
 .NOTES
     Replaces the separate Test-BiosVersion and Update-Bios steps.
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\BiosUpdate-Report.json
+    Output:   C:\PreWipeOutput\Logs\Invoke-BiosUpdate-Report.json
 #>
 
 [CmdletBinding()]
@@ -91,7 +91,7 @@ if (-not $DCUExe) {
     $msg = 'Dell Command Update not found and could not be auto-installed.'
     Write-ErrorLog $msg
     $Result.Error = $msg
-    $Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\BiosUpdate-Report.json" -Force
+    $Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Invoke-BiosUpdate-Report.json" -Force
     if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 } else { Write-Host "ERROR: $msg" -ForegroundColor Red }
     exit 0
 }
@@ -110,7 +110,7 @@ try {
 } catch {
     Write-ErrorLog "DCU scan failed: $_"
     $Result.Error = "Scan failed: $_"
-    $Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\BiosUpdate-Report.json" -Force
+    $Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Invoke-BiosUpdate-Report.json" -Force
     if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
     exit 0
 }
@@ -182,7 +182,7 @@ if ($scanCode -eq 500) {
 #endregion
 
 #region --- Output ---
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\BiosUpdate-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Invoke-BiosUpdate-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5

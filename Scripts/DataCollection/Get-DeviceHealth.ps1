@@ -19,7 +19,7 @@
       (Win32_Battery, ROOT\WMI BatteryCycleCount, FullChargedCapacity, DesignedCapacity)
 
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\DeviceHealth-Report.json
+    Output:   C:\PreWipeOutput\Logs\Get-DeviceHealth-Report.json
 #>
 
 [CmdletBinding()]
@@ -213,7 +213,7 @@ $Result = [PSCustomObject]@{
     Uptime        = $UptimeInfo
 }
 
-$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\DeviceHealth-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\Get-DeviceHealth-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -261,7 +261,7 @@ if ($NonInteractive) {
     }
 
     Write-Host ""
-    Write-Host "Report: $LogDir\DeviceHealth-Report.json"
+    Write-Host "Report: $LogDir\Get-DeviceHealth-Report.json"
     Write-Host ""
 }
 #endregion

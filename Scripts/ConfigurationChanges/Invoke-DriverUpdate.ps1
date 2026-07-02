@@ -22,7 +22,7 @@
 .NOTES
     Replaces the separate Test-DriverStatus and Update-Drivers steps.
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\DriverUpdate-Report.json
+    Output:   C:\PreWipeOutput\Logs\Invoke-DriverUpdate-Report.json
 #>
 
 [CmdletBinding()]
@@ -213,7 +213,7 @@ try {
 #endregion
 
 #region --- Output ---
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\DriverUpdate-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Invoke-DriverUpdate-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5

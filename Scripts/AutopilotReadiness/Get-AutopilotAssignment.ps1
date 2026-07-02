@@ -30,7 +30,7 @@
       (Autopilot JSON structure: CloudAssignedTenantDomain, ZtdCorrelationId, etc.)
 
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\AutopilotAssignment-Report.json
+    Output:   C:\PreWipeOutput\Logs\Get-AutopilotAssignment-Report.json
 #>
 
 [CmdletBinding()]
@@ -219,7 +219,7 @@ if ($Result.ProfileDownloaded) {
 #endregion
 
 #region --- Output ---
-$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\AutopilotAssignment-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Get-AutopilotAssignment-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -238,7 +238,7 @@ if ($NonInteractive) {
     Write-Host "  Correlation ID:     $(if ($Result.CorrelationId) { $Result.CorrelationId } else { '(none)' })"
     if ($Result.Error) { Write-Host "  Error: $($Result.Error)" -ForegroundColor Yellow }
     Write-Host ""
-    Write-Host "Report: $OutputRoot\Logs\AutopilotAssignment-Report.json"
+    Write-Host "Report: $OutputRoot\Logs\Get-AutopilotAssignment-Report.json"
     Write-Host ""
 }
 #endregion

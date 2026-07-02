@@ -20,7 +20,7 @@
       (32-bit/64-bit registry uninstall enumeration pattern)
 
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\InstalledApplications-Report.json
+    Output:   C:\PreWipeOutput\Logs\Get-InstalledApplications-Report.json
 #>
 
 [CmdletBinding()]
@@ -188,7 +188,7 @@ $Result = [PSCustomObject]@{
     Applications     = $AllApps
 }
 
-$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\InstalledApplications-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\Get-InstalledApplications-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -223,7 +223,7 @@ if ($NonInteractive) {
         }
     }
     Write-Host ""
-    Write-Host "Report: $LogDir\InstalledApplications-Report.json"
+    Write-Host "Report: $LogDir\Get-InstalledApplications-Report.json"
     Write-Host ""
 }
 #endregion

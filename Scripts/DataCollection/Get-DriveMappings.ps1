@@ -98,7 +98,7 @@ $Summary = [PSCustomObject]@{
     Results   = $AllResults
 }
 
-$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\DriveMappings-Report.json" -Force
+$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Get-DriveMappings-Report.json" -Force
 
 if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 5
@@ -112,7 +112,7 @@ if ($NonInteractive) {
         }
     }
     Write-Host ""
-    Write-Host "Report: $OutputRoot\Logs\DriveMappings-Report.json"
+    Write-Host "Report: $OutputRoot\Logs\Get-DriveMappings-Report.json"
     Write-Host ""
 }
 #endregion

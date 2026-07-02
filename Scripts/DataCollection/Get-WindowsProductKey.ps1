@@ -20,7 +20,7 @@
       (Get-WindowsOEMProductKey function - SoftwareLicensingService.OA3xOriginalProductKey)
 
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\WindowsProductKey-Report.json
+    Output:   C:\PreWipeOutput\Logs\Get-WindowsProductKey-Report.json
 #>
 
 [CmdletBinding()]
@@ -111,7 +111,7 @@ $Result = [PSCustomObject]@{
     OS             = $OSEdition
 }
 
-$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\WindowsProductKey-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\Get-WindowsProductKey-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -132,7 +132,7 @@ if ($NonInteractive) {
     if ($OSEdition) {
         Write-Host "OS:         $($OSEdition.Caption) ($($OSEdition.Version))"
     }
-    Write-Host "Report:     $LogDir\WindowsProductKey-Report.json"
+    Write-Host "Report:     $LogDir\Get-WindowsProductKey-Report.json"
     Write-Host ""
 }
 #endregion

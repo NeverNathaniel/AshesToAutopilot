@@ -224,7 +224,7 @@ $Summary = [PSCustomObject]@{
     Results   = $AllResults
 }
 
-$Summary | ConvertTo-Json -Depth 10 | Out-File "$OutputRoot\Logs\BrowserBookmarks-Report.json" -Force
+$Summary | ConvertTo-Json -Depth 10 | Out-File "$OutputRoot\Logs\Backup-BrowserBookmarks-Report.json" -Force
 
 if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 10
@@ -240,7 +240,7 @@ if ($NonInteractive) {
     }
     Write-Host ""
     Write-Host "Backups saved to: $BookmarkRoot"
-    Write-Host "Report: $OutputRoot\Logs\BrowserBookmarks-Report.json"
+    Write-Host "Report: $OutputRoot\Logs\Backup-BrowserBookmarks-Report.json"
     Write-Host ""
 }
 #endregion

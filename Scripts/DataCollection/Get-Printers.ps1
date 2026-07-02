@@ -106,7 +106,7 @@ $Summary = [PSCustomObject]@{
     Printers       = $PrinterList
 }
 
-$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Printers-Report.json" -Force
+$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Get-Printers-Report.json" -Force
 
 if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 5
@@ -119,7 +119,7 @@ if ($NonInteractive) {
         $PrinterList | Format-Table -AutoSize -Property Name, Type, PortName, DriverName, IsDefault, Status | Out-String | Write-Host
     }
     Write-Host "Default: $(if ($null -ne $DefaultPrinter.Name) { $DefaultPrinter.Name } else { 'None' })" -ForegroundColor Cyan
-    Write-Host "Report: $OutputRoot\Logs\Printers-Report.json"
+    Write-Host "Report: $OutputRoot\Logs\Get-Printers-Report.json"
     Write-Host ""
 }
 #endregion

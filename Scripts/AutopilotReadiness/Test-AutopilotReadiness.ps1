@@ -20,7 +20,7 @@
       (TPM, SecureBoot, CPU family, memory, storage checks adapted)
 
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\AutopilotReadiness-Report.json
+    Output:   C:\PreWipeOutput\Logs\Test-AutopilotReadiness-Report.json
 #>
 
 [CmdletBinding()]
@@ -293,7 +293,7 @@ $Result = [PSCustomObject]@{
     Checks        = $Checks
 }
 
-$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\AutopilotReadiness-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\Test-AutopilotReadiness-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -335,7 +335,7 @@ if ($NonInteractive) {
         foreach ($ki in $knownIssues) { Write-Host "  - $ki" -ForegroundColor Yellow }
     }
     Write-Host ""
-    Write-Host "Report: $LogDir\AutopilotReadiness-Report.json"
+    Write-Host "Report: $LogDir\Test-AutopilotReadiness-Report.json"
     Write-Host ""
 }
 #endregion

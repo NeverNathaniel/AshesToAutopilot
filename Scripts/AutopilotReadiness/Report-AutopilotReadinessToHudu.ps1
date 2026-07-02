@@ -61,12 +61,12 @@
     Output:   C:\PreWipeOutput\Logs\HuduReport-Result.json
 
     Reads (if present):
-      C:\PreWipeOutput\Logs\AutopilotReadiness-Report.json
-      C:\PreWipeOutput\Logs\AutopilotAssignment-Report.json
-      C:\PreWipeOutput\Logs\PreWipeSummary-Report.json
-      C:\PreWipeOutput\Logs\BitLockerEscrow-Report.json
-      C:\PreWipeOutput\Logs\OneDriveSyncStatus-Report.json
-      C:\PreWipeOutput\Logs\DeviceHealth-Report.json
+      C:\PreWipeOutput\Logs\Test-AutopilotReadiness-Report.json
+      C:\PreWipeOutput\Logs\Get-AutopilotAssignment-Report.json
+      C:\PreWipeOutput\Logs\Get-PreWipeSummary-Report.json
+      C:\PreWipeOutput\Logs\Test-BitLockerEscrow-Report.json
+      C:\PreWipeOutput\Logs\Test-OneDriveSyncStatus-Report.json
+      C:\PreWipeOutput\Logs\Get-DeviceHealth-Report.json
 
     Based on the Hudu Community Script method:
     https://github.com/Hudu-Technologies-Inc/Community-Scripts/blob/main/
@@ -214,12 +214,12 @@ function Get-JsonReport {
 }
 
 Write-Log "Loading toolkit JSON outputs..."
-$readinessReport  = Get-JsonReport 'AutopilotReadiness-Report.json'
-$assignmentReport = Get-JsonReport 'AutopilotAssignment-Report.json'
-$summaryReport    = Get-JsonReport 'PreWipeSummary-Report.json'
-$bitlockerReport  = Get-JsonReport 'BitLockerEscrow-Report.json'
-$oneDriveReport   = Get-JsonReport 'OneDriveSyncStatus-Report.json'
-$healthReport     = Get-JsonReport 'DeviceHealth-Report.json'
+$readinessReport  = Get-JsonReport 'Test-AutopilotReadiness-Report.json'
+$assignmentReport = Get-JsonReport 'Get-AutopilotAssignment-Report.json'
+$summaryReport    = Get-JsonReport 'Get-PreWipeSummary-Report.json'
+$bitlockerReport  = Get-JsonReport 'Test-BitLockerEscrow-Report.json'
+$oneDriveReport   = Get-JsonReport 'Test-OneDriveSyncStatus-Report.json'
+$healthReport     = Get-JsonReport 'Get-DeviceHealth-Report.json'
 #endregion
 
 #region --- Collect Device Identity ---

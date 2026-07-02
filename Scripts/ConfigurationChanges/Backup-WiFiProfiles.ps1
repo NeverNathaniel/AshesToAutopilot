@@ -21,7 +21,7 @@
 
     Requires: Administrator (for key=clear export)
     Output:   C:\PreWipeOutput\WiFiProfiles\ (XML files)
-              C:\PreWipeOutput\Logs\WiFiProfiles-Report.json
+              C:\PreWipeOutput\Logs\Backup-WiFiProfiles-Report.json
 #>
 
 [CmdletBinding()]
@@ -51,7 +51,7 @@ if (-not $wlanService -or $wlanService.Status -ne 'Running') {
         ProfileCount = 0
         Profiles     = @()
     }
-    $Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\WiFiProfiles-Report.json" -Force
+    $Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\Backup-WiFiProfiles-Report.json" -Force
     if ($NonInteractive) { $Result | ConvertTo-Json -Depth 5 }
     else {
         Write-Host "No WLAN service - this may be a desktop without WiFi." -ForegroundColor Yellow
@@ -174,7 +174,7 @@ $Result = [PSCustomObject]@{
     SensitiveFiles  = $SensitiveFiles
 }
 
-$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\WiFiProfiles-Report.json" -Force
+$Result | ConvertTo-Json -Depth 5 | Out-File "$LogDir\Backup-WiFiProfiles-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 5
@@ -198,7 +198,7 @@ if ($NonInteractive) {
         Write-Host ""
     }
     Write-Host "Exported to: $WiFiDir"
-    Write-Host "Report:      $LogDir\WiFiProfiles-Report.json"
+    Write-Host "Report:      $LogDir\Backup-WiFiProfiles-Report.json"
     Write-Host ""
 }
 #endregion

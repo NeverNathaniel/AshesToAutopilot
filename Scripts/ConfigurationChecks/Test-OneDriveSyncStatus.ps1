@@ -23,7 +23,7 @@
       patterns consistent with LazyAdmin-master/Office365/OneDriveSizeReport.ps1)
 
     Requires: Administrator
-    Output:   C:\PreWipeOutput\Logs\OneDriveSyncStatus-Report.json
+    Output:   C:\PreWipeOutput\Logs\Test-OneDriveSyncStatus-Report.json
 #>
 
 [CmdletBinding()]
@@ -200,7 +200,7 @@ $Result = [PSCustomObject]@{
     Profiles         = $Results
 }
 
-$Result | ConvertTo-Json -Depth 10 | Out-File "$LogDir\OneDriveSyncStatus-Report.json" -Force
+$Result | ConvertTo-Json -Depth 10 | Out-File "$LogDir\Test-OneDriveSyncStatus-Report.json" -Force
 
 if ($NonInteractive) {
     $Result | ConvertTo-Json -Depth 10
@@ -228,7 +228,7 @@ if ($NonInteractive) {
     }
 
     Write-Host ""
-    Write-Host "Report: $LogDir\OneDriveSyncStatus-Report.json"
+    Write-Host "Report: $LogDir\Test-OneDriveSyncStatus-Report.json"
     Write-Host ""
 }
 #endregion

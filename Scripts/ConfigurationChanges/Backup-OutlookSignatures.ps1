@@ -98,7 +98,7 @@ $Summary = [PSCustomObject]@{
     Results   = $Results
 }
 
-$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\OutlookSignatures-Report.json" -Force
+$Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Backup-OutlookSignatures-Report.json" -Force
 
 if ($NonInteractive) {
     $Summary | ConvertTo-Json -Depth 5
