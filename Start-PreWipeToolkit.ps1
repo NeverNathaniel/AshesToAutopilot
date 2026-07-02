@@ -51,6 +51,16 @@ foreach ($dir in @($OutputRoot, $LogDir)) {
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null } # Create output folders if missing
 }
 
+# Restrict the output root to SYSTEM + Administrators before anything is written —
+# it will hold cleartext WiFi PSKs and captured BitLocker recovery keys.
+# (Initialize-Toolkit.ps1 applies the same hardening for standalone script runs.)
+try {
+    $_outputAcl = Get-Acl -LiteralPath $OutputRoot
+    if (-not $_outputAcl.AreAccessRulesProtected) {
+        $null = & icacls $OutputRoot /inheritance:r /grant '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' 2>&1
+    }
+} catch { }
+
 $_principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent() # Check current user permissions
 if (-not $_principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { # Verify Administrator role
     Write-Host 'ERROR: This script must run as Administrator.' -ForegroundColor Red

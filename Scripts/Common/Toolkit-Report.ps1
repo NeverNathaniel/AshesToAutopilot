@@ -476,7 +476,9 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 if ($Parsed.WipeVerdict -match 'INCOMPLETE')           { return @{ Verdict = 'WARN'; Reason = "Incomplete — $($Parsed.ScriptsRan)/$($Parsed.ScriptsTotal) scripts run" } }
                 return @{ Verdict = 'WARN'; Reason = 'Summary status unknown' }
             }
-            default { return @{ Verdict = 'PASS'; Reason = 'Completed' } }
+            # Fail closed: a script with no mapping case must not read as green.
+            # (All 27 current steps have cases — this catches future additions.)
+            default { return @{ Verdict = 'WARN'; Reason = 'No verdict mapping for this script — result not evaluated' } }
         }
     } catch { return @{ Verdict = 'WARN'; Reason = "Evaluation error: $_" } }
 }

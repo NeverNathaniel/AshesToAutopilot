@@ -71,3 +71,17 @@ function Test-AdminElevation {
     Write-Host 'ERROR: This script must be run as Administrator (elevated PowerShell).' -ForegroundColor Red
     return $false
 }
+
+# Restrict the output root to SYSTEM + Administrators. It accumulates cleartext
+# WiFi PSKs and captured BitLocker recovery keys, and default inheritance for new
+# folders under C:\ grants regular users read access. SID-based principals are
+# locale-proof. Idempotent: only applies when inheritance is still enabled.
+try {
+    $outputAcl = Get-Acl -LiteralPath $OutputRoot
+    if (-not $outputAcl.AreAccessRulesProtected) {
+        $null = & icacls $OutputRoot /inheritance:r /grant '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' 2>&1
+        Write-Log "Hardened ACL on $OutputRoot (SYSTEM + Administrators only)"
+    }
+} catch {
+    Write-Log "Could not harden ACL on $OutputRoot : $_" 'WARN'
+}

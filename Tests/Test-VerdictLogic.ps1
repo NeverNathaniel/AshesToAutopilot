@@ -44,6 +44,9 @@ Assert 'non-zero exit can never be PASS' ($v.Verdict -eq 'FAIL' -and $v.Reason -
 $v = Get-StepVerdict -Parsed $null -ScriptFile 'Whatever.ps1' -Status 'SKIP'
 Assert 'SKIP is WARN' ($v.Verdict -eq 'WARN' -and $v.Reason -eq 'Step was skipped')
 
+$v = Get-StepVerdict -Parsed ([PSCustomObject]@{ Anything = 1 }) -ScriptFile 'Unmapped-NewScript.ps1' -Status 'DONE'
+Assert 'unmapped script defaults to WARN, never PASS' ($v.Verdict -eq 'WARN')
+
 # --- BitLocker escrow ---------------------------------------------------------
 $v = Get-StepVerdict -Parsed ([PSCustomObject]@{ AllEscrowed = $false }) -ScriptFile 'Test-BitLockerEscrow.ps1' -Status 'FAIL'
 Assert 'escrow failure is blocking FAIL' ($v.Verdict -eq 'FAIL')
