@@ -48,6 +48,7 @@ try {
     Write-Log "Chassis type: $(if ($IsLaptop) { 'Laptop/Portable' } else { 'Desktop/Other' }) (types: $($enclosure.ChassisTypes -join ', '))"
 } catch {
     Write-ErrorLog "Failed to detect chassis type: $_"
+    $Warnings += "Chassis type could not be determined - battery health not assessed: $_"
 }
 #endregion
 
@@ -56,7 +57,9 @@ $BatteryInfo = $null
 if ($IsLaptop) {
     try {
         Write-Log "Checking battery health..."
-        $battery = Get-CimInstance -Namespace 'root\cimv2' -ClassName Win32_Battery -ErrorAction Stop
+        # Multi-battery laptops return multiple instances; report the first so the
+        # JSON fields stay scalar instead of serializing as arrays.
+        $battery = @(Get-CimInstance -Namespace 'root\cimv2' -ClassName Win32_Battery -ErrorAction Stop) | Select-Object -First 1
 
         if ($battery) {
             $chargeRemaining = $battery.EstimatedChargeRemaining
@@ -112,6 +115,7 @@ if ($IsLaptop) {
     } catch {
         $BatteryInfo = [PSCustomObject]@{ Status = 'Error'; Error = $_.ToString() }
         Write-ErrorLog "Battery check failed: $_"
+        $Warnings += "Battery health could not be assessed: $_"
     }
 } else {
     Write-Log "Desktop device - skipping battery check."
@@ -169,6 +173,7 @@ try {
 } catch {
     Write-ErrorLog "Disk health check failed: $_"
     $DiskResults += [PSCustomObject]@{ Status = 'Error'; Error = $_.ToString() }
+    $Warnings += "Disk health could not be assessed: $_"
 }
 #endregion
 
@@ -194,6 +199,7 @@ try {
     }
 } catch {
     Write-ErrorLog "Uptime check failed: $_"
+    $Warnings += "Uptime could not be determined: $_"
 }
 #endregion
 

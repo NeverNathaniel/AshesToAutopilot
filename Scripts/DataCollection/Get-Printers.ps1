@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Lists all installed printers, including the default printer, driver, port, and type.
 
@@ -48,6 +48,7 @@ $ExcludeNames = @(
 )
 
 $PrinterList = @()
+$CollectionError = $null
 
 try {
     Write-Log "Querying installed printers via Win32_Printer..."
@@ -91,7 +92,10 @@ try {
         Write-Log "  $($p.Name)$defaultStr | Port: $($p.PortName) | Driver: $($p.DriverName) | Type: $printerType"
     }
 } catch {
+    # Failure must be distinguishable from 'no printers' — a stopped Print Spooler
+    # makes Win32_Printer throw, and a zero-printer PASS here loses the inventory.
     Write-ErrorLog "Printer enumeration failed: $_"
+    $CollectionError = $_.ToString()
 }
 
 $DefaultPrinter = $PrinterList | Where-Object { $_.IsDefault } | Select-Object -First 1
@@ -100,10 +104,11 @@ Write-Log "Default printer: $(if ($null -ne $DefaultPrinter.Name) { $DefaultPrin
 
 #region --- Output ---
 $Summary = [PSCustomObject]@{
-    Timestamp      = (Get-Date -Format 'o')
-    TotalPrinters  = $PrinterList.Count
-    DefaultPrinter = $DefaultPrinter.Name
-    Printers       = $PrinterList
+    Timestamp       = (Get-Date -Format 'o')
+    TotalPrinters   = $PrinterList.Count
+    DefaultPrinter  = $DefaultPrinter.Name
+    Printers        = $PrinterList
+    CollectionError = $CollectionError
 }
 
 $Summary | ConvertTo-Json -Depth 5 | Out-File "$OutputRoot\Logs\Get-Printers-Report.json" -Force

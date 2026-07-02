@@ -45,11 +45,18 @@ Write-Log "Enumerating Credential Manager entries for: $InvokingUser"
 
 $Entries = @()
 $cmdkeyOutput = $null
+$CollectionError = $null
 
 try {
     $cmdkeyOutput = & cmdkey.exe /list 2>&1 | Out-String
+    if (-not $cmdkeyOutput.Trim()) {
+        $CollectionError = 'cmdkey produced no output - vault contents unknown'
+        Write-Log $CollectionError 'WARN'
+    }
 } catch {
+    # Failure must be distinguishable from 'zero credentials'
     Write-ErrorLog "cmdkey invocation failed: $_"
+    $CollectionError = "cmdkey invocation failed: $_"
     $cmdkeyOutput = ''
 }
 
@@ -109,10 +116,11 @@ foreach ($e in $Entries) {
 $ContextNote = 'cmdkey only lists the invoking user''s vault. Other users'' credentials are not enumerable from this context -- run as each user to enumerate fully.'
 
 $Summary = [PSCustomObject]@{
-    Timestamp    = (Get-Date -Format 'o')
-    InvokingUser = $InvokingUser
-    EntryCount   = $Entries.Count
-    CountsByType = $ByType
+    Timestamp       = (Get-Date -Format 'o')
+    InvokingUser    = $InvokingUser
+    EntryCount      = $Entries.Count
+    CollectionError = $CollectionError
+    CountsByType    = $ByType
     Entries      = $Entries
     Note         = $ContextNote
 }

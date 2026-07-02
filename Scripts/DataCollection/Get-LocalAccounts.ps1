@@ -40,7 +40,9 @@ if (-not (Test-AdminElevation)) { exit 1 }
 #endregion
 
 #region --- Discover local Administrators members ---
-$AdminSidSet = @{}
+$AdminSidSet       = @{}
+$AdminNameSet      = @{}
+$AdminCountUnknown = $false
 try {
     $adminMembers = Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop
     foreach ($m in $adminMembers) {
@@ -51,7 +53,24 @@ try {
     }
     Write-Log "Local Administrators members: $($AdminSidSet.Count)"
 } catch {
-    Write-Log "Get-LocalGroupMember failed; admin flag will be best-effort: $_" 'WARN'
+    # Get-LocalGroupMember throws on Entra-joined devices with orphaned/AzureAD SIDs
+    # in the group ('Failed to compare two elements'). Fall back to net localgroup
+    # so the multiple-admins warning still works on exactly the fleet this targets.
+    Write-Log "Get-LocalGroupMember failed; falling back to 'net localgroup': $_" 'WARN'
+    try {
+        $netOut = & net localgroup Administrators 2>$null
+        $inMembers = $false
+        foreach ($line in $netOut) {
+            if ($line -match '^-{5,}') { $inMembers = $true; continue }
+            if ($line -match 'command completed') { break }
+            if ($inMembers -and $line.Trim()) { $AdminNameSet[$line.Trim()] = $true }
+        }
+        Write-Log "Fallback: $($AdminNameSet.Count) Administrators member name(s) via net localgroup"
+        if ($AdminNameSet.Count -eq 0) { $AdminCountUnknown = $true }
+    } catch {
+        Write-ErrorLog "Both admin-membership enumerations failed: $_"
+        $AdminCountUnknown = $true
+    }
 }
 #endregion
 
@@ -75,6 +94,7 @@ if ($useLocalUser) {
         $sidValue = if ($u.SID) { $u.SID.Value } else { $null }
         $isAdmin  = $false
         if ($sidValue -and $AdminSidSet.ContainsKey($sidValue)) { $isAdmin = $true }
+        elseif ($AdminNameSet.ContainsKey($u.Name) -or $AdminNameSet.ContainsKey("$env:COMPUTERNAME\$($u.Name)")) { $isAdmin = $true }
 
         $NonSystem += [PSCustomObject]@{
             Name            = $u.Name
@@ -101,6 +121,7 @@ if ($useLocalUser) {
         $sidValue = $u.SID
         $isAdmin  = $false
         if ($sidValue -and $AdminSidSet.ContainsKey($sidValue)) { $isAdmin = $true }
+        elseif ($AdminNameSet.ContainsKey($u.Name) -or $AdminNameSet.ContainsKey("$env:COMPUTERNAME\$($u.Name)")) { $isAdmin = $true }
 
         # Win32_UserAccount Disabled is the inverse of Enabled.
         $enabled = $true
@@ -129,6 +150,7 @@ $Summary = [PSCustomObject]@{
     AccountCount      = $NonSystem.Count
     NonSystemAccounts = $NonSystem
     AdminCount        = $AdminCount
+    AdminCountUnknown = $AdminCountUnknown
 }
 
 $ReportPath = "$LogDir\$ScriptName-Report.json"

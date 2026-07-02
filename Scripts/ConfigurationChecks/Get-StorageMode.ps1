@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reports the current SATA/storage controller mode (AHCI, RAID, Intel RST, NVMe).
 
@@ -54,7 +54,6 @@ try {
     Write-Log "Querying storage controllers..."
     $controllers = Get-CimInstance -ClassName Win32_IDEController -ErrorAction SilentlyContinue
     $scsiCtrl    = Get-CimInstance -ClassName Win32_SCSIController -ErrorAction SilentlyContinue
-    $storageCtrl = Get-CimInstance -ClassName Win32_StorageController -ErrorAction SilentlyContinue 2>$null
 
     $ctrlList = @()
     foreach ($c in $controllers) {
@@ -99,9 +98,8 @@ try {
         $storageMode = 'AHCI_or_Legacy'
     }
 
-    # Also check via PnP devices for Intel RST service
+    # Also check for a running Intel RST service
     try {
-        $pnpDevices = Get-PnpDevice -Class DiskDrive -ErrorAction SilentlyContinue
         $rstService = Get-Service -Name 'iaStorV', 'iaStorAVC', 'RstMwService' -ErrorAction SilentlyContinue
         if ($rstService | Where-Object { $_.Status -eq 'Running' }) {
             $storageMode = 'IntelRST_RAID'
@@ -112,26 +110,30 @@ try {
         Write-ErrorLog "RST detection failed: $_"
     }
 
-    # Registry check for SATA mode
+    # Registry check for SATA mode. The two service checks are independent: the
+    # iaStorV key merely EXISTING (common after chipset package installs) must not
+    # skip the storahci check, and a missing Start value must not read as boot-start
+    # ($null -le 1 is $true in PowerShell).
     try {
         $ahciPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\storahci'
         $raidPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\iaStorV'
         if (Test-Path $raidPath) {
             $iaStorStart = (Get-ItemProperty $raidPath -ErrorAction SilentlyContinue).Start
-            if ($iaStorStart -le 1) {
+            if ($null -ne $iaStorStart -and $iaStorStart -le 1) {
                 $storageMode = 'IntelRST_RAID'
                 $Result.IntelRSTDetected = $true
                 $Result.Notes += "iaStorV driver active in registry"
             }
-        } elseif (Test-Path $ahciPath) {
+        }
+        if ($storageMode -eq 'Unknown' -and (Test-Path $ahciPath)) {
             $ahciStart = (Get-ItemProperty $ahciPath -ErrorAction SilentlyContinue).Start
-            if ($ahciStart -le 1 -and $storageMode -eq 'Unknown') {
+            if ($null -ne $ahciStart -and $ahciStart -le 1) {
                 $storageMode = 'AHCI'
                 $Result.Notes += "storahci driver active - AHCI mode"
             }
         }
     } catch {
-        Write-ErrorLog "NVMe detection failed: $_"
+        Write-ErrorLog "Registry SATA-mode check failed: $_"
     }
 
     $Result.StorageMode = $storageMode
@@ -168,4 +170,7 @@ if ($NonInteractive) {
 }
 #endregion
 
+# Total detection failure is a crash per the contract — the Intel RST gate
+# inspected nothing and must not read as a completed check.
+if ($Result.Error) { exit 1 }
 exit 0

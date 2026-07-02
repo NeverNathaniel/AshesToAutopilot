@@ -287,6 +287,9 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 if ($Parsed.StorageMode -match 'RAID|Intel RST|IntelRST') {
                     return @{ Verdict = 'WARN'; Reason = "Storage mode is $($Parsed.StorageMode) — may need AHCI conversion" }
                 }
+                if ($Parsed.Error -or $Parsed.StorageMode -eq 'Unknown') {
+                    return @{ Verdict = 'WARN'; Reason = 'Storage mode could not be determined — check for Intel RST manually' }
+                }
                 return @{ Verdict = 'PASS'; Reason = "Storage mode: $($Parsed.StorageMode)" }
             }
             '*Backup-BrowserBookmarks*' {
@@ -342,6 +345,7 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 return @{ Verdict = 'PASS'; Reason = 'Signatures backed up (or none found)' }
             }
             '*Get-Printers*' {
+                if ($Parsed.CollectionError) { return @{ Verdict = 'WARN'; Reason = 'Printer enumeration failed — inventory incomplete' } }
                 if (-not $Parsed.Printers -or $Parsed.Printers.Count -eq 0) { return @{ Verdict = 'PASS'; Reason = 'No printers found' } }
                 $net = @($Parsed.Printers | Where-Object { $_.Type -eq 'Network' }).Count
                 return @{ Verdict = 'PASS'; Reason = "$($Parsed.TotalPrinters) printer(s) documented ($net network)" }
@@ -375,10 +379,12 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 return @{ Verdict = 'PASS'; Reason = "$profCount profile(s) checked — no meeting recordings" }
             }
             '*Get-CredentialManagerEntries*' {
+                if ($Parsed.CollectionError) { return @{ Verdict = 'WARN'; Reason = 'Credential enumeration failed — results incomplete' } }
                 $count = if ($null -ne $Parsed.EntryCount) { $Parsed.EntryCount } else { 0 }
                 return @{ Verdict = 'PASS'; Reason = "$count credential(s) documented" }
             }
             '*Get-LocalAccounts*' {
+                if ($Parsed.AdminCountUnknown -eq $true) { return @{ Verdict = 'WARN'; Reason = 'Admin membership could not be enumerated — verify manually' } }
                 $adminCount = if ($null -ne $Parsed.AdminCount) { $Parsed.AdminCount } else { 0 }
                 if ($adminCount -gt 1) { return @{ Verdict = 'WARN'; Reason = "$adminCount admin accounts found — verify before wiping" } }
                 return @{ Verdict = 'PASS'; Reason = "$($Parsed.AccountCount) account(s) documented" }
