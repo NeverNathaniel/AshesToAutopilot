@@ -19,3 +19,6 @@ docs/superpowers/
 
 # Release artifacts (attach to GitHub releases, don't commit)
 *.zip
+
+# Superpowers plugin working files (session-local)
+.superpowers/
