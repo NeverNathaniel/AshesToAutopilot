@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.4.0 (2026-07) — Post-wipe restore ("Ashes to Autopilot and back")
+
+The backups finally have a consumer. New `Start-PostWipeRestore.ps1` replays
+the pre-wipe backups onto the re-enrolled device:
+
+- **Wi-Fi profiles** imported device-wide (enterprise profiles flagged for
+  re-auth), **drive mappings** re-mapped for the current user with persistence
+  preserved, **network printers** reconnected with the default re-set,
+  **Outlook signatures** and **wallpaper** restored, **Windows 10 taskbar
+  pins** copied back.
+- Honest by design: every item reports **Restored / Staged / Skipped /
+  Failed**. Nothing is ever clobbered — existing bookmarks (possibly synced),
+  existing signatures, and in-use drive letters are left alone; anything not
+  directly restorable (Firefox databases, Windows 11 pin state, local-printer
+  drivers) is staged to `Desktop\RestoredData` with instructions instead of
+  being silently dropped.
+- A `RestoreReport_<PC>_<ts>.html` / `.json` diff report shows exactly what
+  came back and what needs a manual step.
+- Multi-profile backups fail closed: ambiguous source profiles require
+  `-SourceProfile` (with the candidate list) rather than guessing.
+
+**Workflow note for techs: copy `C:\PreWipeOutput` to USB or a share BEFORE
+wiping — the wipe destroys it.** Then on the new build, in the user's session,
+elevated: `.\Start-PostWipeRestore.ps1 -BackupRoot E:\PreWipeOutput`.
+
+Restore-plan logic is unit-tested (`Tests\Test-RestoreLogic.ps1`, runs in CI
+and in the on-device self-test).
+
 ## v1.3.0 (2026-07) — Correctness overhaul ("the toolkit can actually fail now")
 
 A full code review found that most failure paths reported success: the sync

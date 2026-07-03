@@ -72,3 +72,9 @@ jobs:
       - name: Verdict unit tests
         shell: pwsh
         run: ./Tests/Test-VerdictLogic.ps1
+
+      # Gate 4: post-wipe restore plan logic (source-profile selection and the
+      # mapping/printer/bookmark restore decisions)
+      - name: Restore logic unit tests
+        shell: pwsh
+        run: ./Tests/Test-RestoreLogic.ps1

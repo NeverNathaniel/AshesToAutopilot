@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repo Is
 
-AshesToAutopilot is a Windows PowerShell toolkit for pre-wipe device preparation. A tech runs `Start-PreWipeToolkit.ps1` on a Windows device before reimaging it; the toolkit scans, backs up, configures, and validates Autopilot readiness. It runs on **Windows only** and requires **Administrator elevation**. There are no external module dependencies for the core toolkit.
+AshesToAutopilot is a Windows PowerShell toolkit for pre-wipe device preparation. A tech runs `Start-PreWipeToolkit.ps1` on a Windows device before reimaging it; the toolkit scans, backs up, configures, and validates Autopilot readiness. `Start-PostWipeRestore.ps1` is the counterpart run on the re-enrolled device: it replays the backups (Wi-Fi, drive mappings, printers, bookmarks, signatures, wallpaper, taskbar) from a copy of `C:\PreWipeOutput`. It runs on **Windows only** and requires **Administrator elevation**. There are no external module dependencies for the core toolkit.
 
 The repo also contains a **portable Electron desktop app** (`app/` + `package.json`) that fronts the same PowerShell scripts — see "Desktop App (Electron)" below.
 
@@ -154,6 +154,7 @@ Scripts are grouped into four subdirectories matching the `Phase` field on each 
 - **`ConfigurationChecks/`** — 4 read-only status checks (OneDrive KFM/sync, storage mode, WinRE)
 - **`ConfigurationChanges/`** — 10 scripts that back up user data or modify settings (BitLocker, WoL, Dell updates, backups)
 - **`AutopilotReadiness/`** — 4 orchestrated steps for TPM/UEFI validation and device registration; plus `Report-AutopilotReadinessToHudu.ps1` which is run manually post-wipe and requires the `HuduAPI` module
+- **`Restore/`** — post-wipe restore scripts run by `Start-PostWipeRestore.ps1` (NOT `$script:Steps` entries — different device/lifecycle, so no `Get-StepVerdict` mapping). They follow the same I/O contract (`-NonInteractive`, JSON, `Logs\<BaseName>-Report.json`, exit 0 = ran / 1 = crash) with per-item outcomes `Restored/Staged/Skipped/Failed`, and must fail closed: never clobber existing data, stage what cannot be safely applied. Pure decision logic lives in `Restore-Common.ps1` and is unit-tested by `Tests\Test-RestoreLogic.ps1`.
 
 ### Dell-Specific Behavior
 

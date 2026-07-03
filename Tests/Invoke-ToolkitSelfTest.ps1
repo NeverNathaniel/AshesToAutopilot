@@ -35,7 +35,7 @@ Write-Host ''
 Write-Host "Toolkit self-test on PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))" -ForegroundColor Cyan
 Write-Host ''
 
-foreach ($suite in @('Test-Ps51Compat.ps1', 'Test-ToolkitEngine.ps1', 'Test-VerdictLogic.ps1')) {
+foreach ($suite in @('Test-Ps51Compat.ps1', 'Test-ToolkitEngine.ps1', 'Test-VerdictLogic.ps1', 'Test-RestoreLogic.ps1')) {
     Write-Host "--- $suite ---" -ForegroundColor Cyan
     & (Join-Path $PSScriptRoot $suite)
     if ($LASTEXITCODE -ne 0) { $overallFail++ }

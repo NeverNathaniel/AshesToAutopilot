@@ -163,6 +163,28 @@ These scripts write files to the output folder. They live in `Scripts/Configurat
 
 ---
 
+## Restore (Post-Wipe)
+
+The toolkit closes the loop after the wipe. **Before wiping, copy `C:\PreWipeOutput` to a USB drive or network share — the wipe destroys it.** After the device re-enrolls and the user signs in, run from an elevated PowerShell **in that user's session**:
+
+```powershell
+.\Start-PostWipeRestore.ps1 -BackupRoot E:\PreWipeOutput
+```
+
+| Category | What happens |
+|---|---|
+| Wi-Fi profiles | Imported device-wide from the exported XMLs (enterprise profiles need the user to re-enter credentials) |
+| Drive mappings | Re-mapped for the current user with persistence preserved; letters already in use are never clobbered |
+| Printers | Network printers reconnected and the default re-set; local printers reported for manual driver install |
+| Browser bookmarks | Copied only when provably safe (browser profile exists, no bookmarks yet); otherwise staged — synced bookmarks are never overwritten |
+| Outlook signatures | Copied without overwriting anything the user already recreated |
+| Wallpaper | Set for the current user |
+| Taskbar layout | Windows 10 pins restored; Windows 11 pin state staged as reference (it is app-bound and not importable) |
+
+Every item gets an honest outcome — **Restored / Staged / Skipped / Failed** — in a console summary plus a `RestoreReport_<PC>_<ts>.html`/`.json` diff report. Staged items land in `Desktop\RestoredData` with instructions. If the backup contains multiple user profiles, pass `-SourceProfile <name>` (ambiguity fails closed with the candidate list). Skip categories with `-Skip WiFiProfiles,TaskbarLayout`.
+
+---
+
 ## Post-Run Reporting
 
 ### Report-AutopilotReadinessToHudu.ps1
@@ -217,8 +239,10 @@ The orchestrator also supports `-NonInteractive` — it emits current session st
 ## Repository Structure
 
 ```
-Start-PreWipeToolkit.ps1           # Main orchestrator (run this)
+Start-PreWipeToolkit.ps1           # Pre-wipe orchestrator (run this before the wipe)
+Start-PostWipeRestore.ps1          # Post-wipe restore orchestrator (run on the new build)
 Scripts/
+├── Restore/                       # Post-wipe restore scripts + shared plan logic
 ├── Common/                        # Shared helper functions
 │   ├── Toolkit-UI.ps1             # Terminal display and menu rendering
 │   ├── Toolkit-Report.ps1         # HTML report and session export
