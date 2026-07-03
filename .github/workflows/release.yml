@@ -66,11 +66,20 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: npm run dist
 
+      # The README's console-toolkit install instructions download this zip from
+      # the latest release; without it that link 404s on pipeline-published releases.
+      - name: Build console toolkit zip
+        if: steps.check.outputs.exists == 'false'
+        shell: bash
+        run: git archive --format=zip --output=AshesToAutopilot.zip HEAD
+
       - name: Publish GitHub Release
         if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          files: dist/AshesToAutopilot-Portable-*.exe
+          files: |
+            dist/AshesToAutopilot-Portable-*.exe
+            AshesToAutopilot.zip
           fail_on_unmatched_files: true
           generate_release_notes: true
