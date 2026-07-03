@@ -20,7 +20,7 @@ function Get-ActionInstruction {
         '*Test-BitLockerEscrow*'             { return 'Re-run step 23 to escrow the BitLocker key to Entra ID. Do not wipe until the key is backed up.' }
         '*Test-AutopilotReadiness*'          { return 'Device does not meet Autopilot hardware requirements. Check TPM version, UEFI mode, and Secure Boot status before proceeding.' }
         '*Get-AutopilotAssignment*'          { return 'Assign the device an Autopilot profile in Intune (Devices &rsaquo; Enrollment &rsaquo; Autopilot) before wiping.' }
-        '*Register-AutopilotDeviceCommunity*'{ return 'OAuth registration failed. Re-run via [3] Run Single Step and sign in when prompted. For NeedsInteractiveAuth, choose Run Single Step from the main menu.' }
+        '*Register-AutopilotDeviceCommunity*'{ return 'OAuth registration failed. Re-run this step individually (console: [3] Run Single Step; desktop app: the row Run button) and sign in when prompted.' }
         '*Get-DownloadsSize*'                { return 'Auto-copy to Documents failed. Manually copy the Downloads folder contents to a safe location before wiping.' }
         '*Invoke-BiosUpdate*'                { return 'BIOS update failed. Check the DCU log at C:\PreWipeOutput\Logs\DCU-BIOS-Update.log. If a reboot is needed, reboot and re-verify.' }
         '*Invoke-DriverUpdate*'              { return 'Driver update failed. Check the DCU log at C:\PreWipeOutput\Logs\DCU-Driver-Update.log. If a reboot is needed, reboot and re-verify.' }
@@ -179,7 +179,7 @@ function Get-StepSummary { # Generates human-readable summary from step output
                 return "$($Parsed.ExportedCount)/$($Parsed.ProfileCount) profile(s) exported$ent$active"
             }
             '*Register-AutopilotDeviceCommunity*' {
-                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')  { return 'Requires interactive run — use [3] Run Single Step to sign in via OAuth' }
+                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')  { return 'Requires interactive run — run this step individually to sign in via OAuth' }
                 if ($Parsed.UploadStatus -eq 'RegisteredUnverified')  { return 'Script exited 0 but CSV absent — verify in Intune' }
                 if ($Parsed.Success -eq $true) {
                     $s = 'Registered via community script'
@@ -460,7 +460,7 @@ function Get-StepVerdictFromData { # Per-script verdict mapping from parsed JSON
                 return @{ Verdict = 'PASS'; Reason = "$($Parsed.ExportedCount)/$($Parsed.ProfileCount) profile(s) exported" }
             }
             '*Register-AutopilotDeviceCommunity*' {
-                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')    { return @{ Verdict = 'WARN'; Reason = 'Requires interactive sign-in — run via [3] Run Single Step' } }
+                if ($Parsed.UploadStatus -eq 'NeedsInteractiveAuth')    { return @{ Verdict = 'WARN'; Reason = 'Requires interactive sign-in — run this step individually' } }
                 if ($Parsed.UploadStatus -eq 'RegisteredUnverified')    { return @{ Verdict = 'WARN'; Reason = 'Script exited 0 but CSV absent — verify registration in Intune' } }
                 if ($Parsed.Success -eq $true)                          { return @{ Verdict = 'PASS'; Reason = 'Device registered via community script (OAuth)' } }
                 if ($Parsed.UploadStatus -eq 'ExecutionFailed')         { return @{ Verdict = 'FAIL'; Reason = "Community script execution failed: $($Parsed.Error)" } }

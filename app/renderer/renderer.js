@@ -27,10 +27,15 @@ function verdictBadge(verdict) {
   }
 }
 
+// Escapes quotes too, so esc() stays safe if a future call site lands inside an
+// HTML attribute — VerdictReasons legitimately contain apostrophes and device text.
 function esc(s) {
-  const div = document.createElement('div');
-  div.textContent = s == null ? '' : String(s);
-  return div.innerHTML;
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function renderDeviceInfo() {
@@ -47,6 +52,8 @@ function renderDeviceInfo() {
 }
 
 function renderSteps() {
+  // Preserve checkbox selections across re-renders (post-run refresh wiped them)
+  const previouslyChecked = new Set(selectedIndices());
   const body = $('step-body');
   body.innerHTML = '';
   let lastPhase = '';
@@ -77,6 +84,9 @@ function renderSteps() {
       startRun([idx], `Single Step — ${step ? step.displayName : idx}`);
     });
   });
+  const boxes = body.querySelectorAll('.step-check');
+  boxes.forEach((c) => { c.checked = previouslyChecked.has(Number(c.dataset.index)); });
+  $('check-all').checked = boxes.length > 0 && Array.from(boxes).every((c) => c.checked);
 }
 
 function updateRow(index, { status, verdict, verdictReason }) {
@@ -125,19 +135,26 @@ function setStatus(text) {
 function showReadiness(summary, htmlPath, cancelled) {
   const banner = $('readiness-banner');
   banner.hidden = false;
+  // Device-level go/no-go: count verdicts across ALL steps, including prior-
+  // session results restored from session.json — a single passing step after a
+  // failed session must not banner "Ready to Wipe". Mirrors the HTML report.
+  const allFail = state.steps.filter((s) => s.verdict === 'FAIL').length;
+  const allWarn = state.steps.filter((s) => s.verdict === 'WARN').length;
+  const priorCount = (allFail + allWarn) - (summary.verdictFail + summary.verdictWarn);
+  const priorNote = priorCount > 0 ? ` (incl. ${priorCount} from a previous run)` : '';
   let cls, text;
   if (cancelled) {
     cls = 'warnings';
     text = `■ Run cancelled — ${summary.done + summary.fail + summary.skip}/${summary.total} step(s) completed.`;
-  } else if (summary.verdictFail === 0 && summary.verdictWarn === 0) {
+  } else if (allFail === 0 && allWarn === 0) {
     cls = 'ready';
     text = '✓ Ready to Wipe — all checks passed.';
-  } else if (summary.verdictFail === 0) {
+  } else if (allFail === 0) {
     cls = 'warnings';
-    text = `⚠ Ready to Wipe — ${summary.verdictWarn} warning(s) to review.`;
+    text = `⚠ Ready to Wipe — ${allWarn} warning(s) to review${priorNote}.`;
   } else {
     cls = 'not-ready';
-    text = `✗ Not Ready — ${summary.verdictFail} blocking issue(s) to resolve.`;
+    text = `✗ Not Ready — ${allFail} blocking issue(s) to resolve${priorNote}.`;
   }
   banner.className = `notice ${cls}`;
   banner.innerHTML = esc(text) + (htmlPath ? ` &nbsp;<a id="open-report">Open HTML report</a>` : '');
@@ -158,6 +175,10 @@ async function startRun(indices, label) {
   } catch (err) {
     setStatus(`Error: ${err.message || err}`);
     setBusy(false);
+    // run-finished never arrives on a rejected invoke — rebuild the table so no
+    // row is left stuck in the blinking RUN… state.
+    renderSteps();
+    renderCounts();
   }
 }
 
@@ -227,7 +248,8 @@ window.toolkit.onEvent((channel, data) => {
   if (channel === 'toolkit:step-started') {
     updateRow(data.index, { status: 'running', verdict: null, verdictReason: '' });
     setStatus(`[${data.position}/${data.total}] Running: ${data.displayName}…`);
-    $(`step-${data.index}`).scrollIntoView({ block: 'nearest' });
+    const row = $(`step-${data.index}`);
+    if (row) row.scrollIntoView({ block: 'nearest' });
     $('progress-fill').style.width = `${((data.position - 1) / data.total) * 100}%`;
   } else if (channel === 'toolkit:step-finished') {
     updateRow(data.index, { status: data.status, verdict: data.verdict, verdictReason: data.verdictReason || data.summary });
@@ -237,7 +259,9 @@ window.toolkit.onEvent((channel, data) => {
     renderSteps();
     renderCounts();
     setBusy(false);
-    setStatus(data.cancelled ? 'Run cancelled.' : 'Run complete.');
+    let statusText = data.cancelled ? 'Run cancelled.' : 'Run complete.';
+    if (data.sessionSaveFailed) statusText += ' Warning: session.json could not be saved — progress will not survive an app restart.';
+    setStatus(statusText);
     showReadiness(data.summary, data.htmlPath, data.cancelled);
   }
 });
@@ -268,6 +292,12 @@ window.toolkit.onEvent((channel, data) => {
     setBusy(false);
   } catch (err) {
     setStatus(`Initialization failed: ${err && err.message ? err.message : err}`);
+    // state is null — every toolbar handler would throw. Disable the UI instead
+    // of leaving dead-looking but clickable buttons.
+    for (const id of ['btn-quick', 'btn-full', 'btn-selected', 'btn-reset', 'btn-export', 'btn-output']) {
+      const btn = $(id);
+      if (btn) btn.disabled = true;
+    }
   } finally {
     // Always dismiss the loading screen, even if init failed.
     $('loading-overlay').hidden = true;

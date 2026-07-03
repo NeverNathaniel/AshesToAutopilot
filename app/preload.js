@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('toolkit', {
   openPath: (p) => ipcRenderer.invoke('toolkit:open-path', p),
   onEvent: (handler) => {
     for (const channel of EVENT_CHANNELS) {
+      // Idempotent: a re-init must not stack duplicate listeners (double row
+      // updates, double run-finished handling).
+      ipcRenderer.removeAllListeners(channel);
       ipcRenderer.on(channel, (_event, data) => handler(channel, data));
     }
   }

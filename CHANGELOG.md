@@ -1,10 +1,32 @@
 # Changelog
 
-## 2026-07 — Correctness overhaul ("the toolkit can actually fail now")
+## v1.3.0 (2026-07) — Correctness overhaul ("the toolkit can actually fail now")
 
 A full code review found that most failure paths reported success: the sync
 check always said safe, escrow errors passed, backups claimed success without
 copying, and every step's exit code read as 0. This release fixes all of it.
+
+### Desktop app
+
+The portable app ships the fixed scripts and gets its own round of fixes:
+
+- The step host failed to parse on Windows PowerShell 5.1 (BOM-less encoding —
+  the real root cause class behind "step host did not return a result"), and an
+  exit-code shadowing bug recorded every failing step as DONE. Both fixed.
+- The in-app "Ready to Wipe" banner now counts prior-session results like the
+  HTML report does — re-running one passing step after a failed session no
+  longer banners green.
+- Reset Session clears per-step report JSONs too (console parity), so a stale
+  prep can't feed the pre-wipe summary after a reset.
+- Robustness: runs survive session.json write failures; a stray interactive
+  prompt in a step fails fast instead of hanging the run forever; Cancel can
+  kill a wedged report export; host-info/report shims time out instead of
+  wedging the app; a broken report export reports its error instead of
+  pointing at a blank "successful" report.
+- Hardening: the file-open bridge only opens non-executable toolkit outputs
+  under C:\PreWipeOutput (the app runs elevated).
+- Polish: checkbox selections survive a run, export filenames use local time,
+  guidance strings no longer reference console-only menu keys.
 
 **The one-line summary for techs: expect more yellow and red on machines that
 used to be all green. Those warnings were always true — they were just

@@ -30,6 +30,20 @@ param(
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 
+function Write-ResultEnvelope {
+    param([hashtable]$Envelope)
+    Write-Output '===ATA_RESULT_BEGIN==='
+    $Envelope | ConvertTo-Json -Compress
+    Write-Output '===ATA_RESULT_END==='
+}
+
+# Safety net: any terminating error still yields an envelope with the real
+# error, so the host never treats a broken export as success.
+trap {
+    Write-ResultEnvelope @{ HtmlPath = $null; Error = "Report export failed: $_" }
+    exit 0
+}
+
 $NonInteractive = $true # Suppress console echo from Write-Log
 $ScriptName = 'Export-ToolkitReport'
 . (Join-Path $PSScriptRoot 'Initialize-Toolkit.ps1')
@@ -40,7 +54,18 @@ Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 
 # Node writes the payload as UTF-8; Windows PowerShell's Get-Content defaults to
 # ANSI, so read it explicitly as UTF-8 or non-ASCII data would be mangled.
-$payload = Get-Content -LiteralPath $InputFile -Raw -Encoding UTF8 | ConvertFrom-Json
+$payload = $null
+try {
+    $payload = Get-Content -LiteralPath $InputFile -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
+} catch {
+    Write-ResultEnvelope @{ HtmlPath = $null; Error = "Could not read report payload: $_" }
+    exit 0
+}
+# Fail closed: a missing/empty payload must not produce a blank 'successful' report.
+if ($null -eq $payload -or -not $payload.Steps) {
+    Write-ResultEnvelope @{ HtmlPath = $null; Error = 'Report payload is empty or missing Steps' }
+    exit 0
+}
 
 $script:ToolkitRoot    = $ToolkitRoot
 $script:ComputerName   = $payload.ComputerName
@@ -80,7 +105,5 @@ $script:Session = [PSCustomObject]@{
 $runLabel = if ($payload.RunLabel) { [string]$payload.RunLabel } else { 'Run' }
 $htmlPath = Export-HtmlReport -ResultSet @($payload.Results) -RunLabel $runLabel
 
-Write-Output '===ATA_RESULT_BEGIN==='
-@{ HtmlPath = $htmlPath } | ConvertTo-Json -Compress
-Write-Output '===ATA_RESULT_END==='
+Write-ResultEnvelope @{ HtmlPath = $htmlPath }
 exit 0

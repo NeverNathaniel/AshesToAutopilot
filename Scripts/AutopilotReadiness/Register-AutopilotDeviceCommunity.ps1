@@ -208,7 +208,7 @@ try {
 # In NonInteractive mode without usable credentials, we cannot authenticate.
 # An AppId without its AppSecret is not usable — gate on the complete pair.
 if ($NonInteractive -and (-not ($AppId -and $AppSecret)) -and (-not $CertificateThumbprint) -and (-not $CertificateSubjectName)) {
-    $msg = 'Interactive OAuth requires interactive mode. Run this step via [3] Run Single Step to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret together (or a certificate).'
+    $msg = 'Interactive OAuth requires interactive mode. Run this step individually (console: [3] Run Single Step; desktop app: the row Run button) to sign in. For automated auth supply -TenantId, -AppId, and -AppSecret together (or a certificate).'
     Write-ErrorLog $msg
     $Result.Error        = $msg
     $Result.UploadStatus = 'NeedsInteractiveAuth'
