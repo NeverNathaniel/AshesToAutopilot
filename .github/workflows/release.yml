@@ -1,0 +1,76 @@
+name: Release
+
+# Automated release pipeline. Publishes the portable Windows exe as a GitHub
+# Release whenever the version in package.json changes on main, or on demand
+# via the Actions tab. The release tag is derived from package.json (e.g.
+# version 1.2.0 -> tag v1.2.0); a guard skips the build when that release
+# already exists, so the pipeline is safe to re-run.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create/publish (e.g. v1.2.0). Defaults to v<package.json version>.'
+        required: false
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish portable exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="v$(node -p "require('./package.json').version")"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $tag"
+
+      - name: Skip if release already exists
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.tag.outputs.tag }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.tag.outputs.tag }} already exists; skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.exists == 'false'
+        run: npm ci
+
+      - name: Build portable exe
+        if: steps.check.outputs.exists == 'false'
+        run: npm run dist
+
+      - name: Publish GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: dist/AshesToAutopilot-Portable-*.exe
+          fail_on_unmatched_files: true
+          generate_release_notes: true

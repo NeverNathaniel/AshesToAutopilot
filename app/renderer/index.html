@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
+  <title>AshesToAutopilot — Pre-Wipe Toolkit</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-box">
+      <h1 class="brand-title">Ashes To Autopilot</h1>
+      <p class="brand-subtitle">Pre-Wipe Toolkit</p>
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="loading-text" id="loading-text">Initializing — gathering device info…</p>
+    </div>
+  </div>
+
+  <header>
+    <div class="brand">
+      <h1 class="brand-title">Ashes To Autopilot</h1>
+      <p class="brand-subtitle">Pre-Wipe Toolkit</p>
+    </div>
+    <div class="device-info" id="device-info"></div>
+  </header>
+
+  <div class="notice notice-error" id="elevation-warning" hidden>
+    ⚠ Not running as Administrator — steps will fail. Restart the app elevated.
+  </div>
+  <div class="notice notice-error" id="platform-warning" hidden>
+    ⚠ Non-Windows environment detected — UI preview only, steps cannot run here.
+  </div>
+
+  <div class="toolbar">
+    <button id="btn-quick" class="btn btn-primary">▶ Quick Check (12)</button>
+    <button id="btn-full" class="btn btn-primary">▶ Full Prep (27)</button>
+    <button id="btn-selected" class="btn">▶ Run Selected</button>
+    <span class="toolbar-spacer"></span>
+    <button id="btn-export" class="btn">Export Report</button>
+    <button id="btn-output" class="btn">Open Output Folder</button>
+    <button id="btn-reset" class="btn btn-danger">Reset Session</button>
+  </div>
+
+  <div class="notice" id="readiness-banner" hidden></div>
+
+  <main>
+    <table id="step-table">
+      <thead>
+        <tr>
+          <th class="col-check"><input type="checkbox" id="check-all" title="Select all"></th>
+          <th class="col-num">#</th>
+          <th>Step</th>
+          <th class="col-status">Status</th>
+          <th class="col-verdict">Verdict</th>
+          <th>Result</th>
+          <th class="col-run"></th>
+        </tr>
+      </thead>
+      <tbody id="step-body"></tbody>
+    </table>
+  </main>
+
+  <footer id="status-bar">
+    <span id="status-text">Ready.</span>
+    <div class="progress-track" id="progress-track" hidden>
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <span class="counts" id="counts"></span>
+    <button id="btn-cancel" class="btn btn-danger" hidden>■ Cancel</button>
+  </footer>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

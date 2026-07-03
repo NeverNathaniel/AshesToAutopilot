@@ -22,3 +22,7 @@ docs/superpowers/
 
 # Superpowers plugin working files (session-local)
 .superpowers/
+
+# Electron desktop app
+node_modules/
+dist/
