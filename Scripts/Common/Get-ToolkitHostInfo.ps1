@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Emits host/device info as JSON for the desktop (Electron) host.
 

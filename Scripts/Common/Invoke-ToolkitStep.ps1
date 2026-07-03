@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs one toolkit step on behalf of the desktop (Electron) host.
 
@@ -81,7 +81,8 @@ if (-not (Test-Path $fullPath)) {
     exit 0
 }
 
-$LASTEXITCODE = 0
+$global:LASTEXITCODE = 0 # A plain assignment would create a script-scope shadow that always reads 0,
+                         # recording every failing step as DONE (same bug fixed in Toolkit-Execution.ps1)
 $exitCode = 0
 $parsed   = $null
 
@@ -89,7 +90,7 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 try {
     # Merge all streams so step console noise lands here, not on our stdout.
     $jsonRaw  = & $fullPath -NonInteractive *>&1 | Out-String
-    $exitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    $exitCode = if ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
 } catch {
     $sw.Stop()
     Write-ErrorLog "Step $ScriptPath threw: $_"

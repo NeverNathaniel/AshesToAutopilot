@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Generates the toolkit HTML report on behalf of the desktop (Electron) host.
 
